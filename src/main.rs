@@ -1,15 +1,37 @@
+/*
+TODO
+
+- read
+- repl
+- program structure (7.1.6) including define
+
+ */
 use core::fmt;
 use std::collections::HashMap;
 
+#[derive(Clone)]
 enum Proc {
-    Builtin,
+    Builtin(String, i8, fn (Vec<Box<Value>>) -> Value),
     Defined(Box<Expr>, Vec<Box<Expr>>),
 }
 
+impl fmt::Display for Proc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let str = match self {
+            Proc::Builtin(name, _, _) => format!("built-in procedure '{}'", name),
+            Proc::Defined(_, _) => format!("procedure")
+        };
+
+        write!(f, "{}", str)
+
+    }
+}
+#[derive(Clone)]
 enum Boolean {
     True,
     False,
 }
+#[derive(Clone)]
 enum Value {
     Boolean(Boolean),
     Bytevector,
@@ -25,6 +47,9 @@ enum Value {
     Unspecified,
     Vector,
 }
+
+#[derive(Clone)]
+
 enum Expr {
     VariableReferenceExpr(String),
     LiteralExpr(Literal),
@@ -35,6 +60,7 @@ enum Expr {
     IncludeExpr, // To be implemented
 }
 
+#[derive(Clone)]
 enum Literal {
     Boolean(Boolean),
     Bytevector,
@@ -66,7 +92,7 @@ impl fmt::Display for Value {
             Value::Number(n) => n.to_string(),
             Value::Pair(a, b) => format!("({} . {})", *a, *b),
             Value::Port => String::from("port"),
-            Value::Proc(_) => String::from("proc"),
+            Value::Proc(p) => format!("{}", p),
             Value::String(s) => format!("\"{}\"", s),
             Value::Symbol(s) => s.clone(),
             Value::Unspecified => String::from("unspecified"),
@@ -76,24 +102,6 @@ impl fmt::Display for Value {
         write!(f, "{}", str)
     }
 }
-
-// fn cons(a: Expr, b: Expr) -> Expr {
-//     Expr::Pair(Box::new(a), Box::new(b))
-// }
-
-// fn car(e: Expr) -> Result<Expr, &'static str> {
-//     match e {
-//         Expr::Pair(a, _) => Ok(*a),
-//         _ => Err("not a pair"),
-//     }
-// }
-
-// fn cdr(e: Expr) -> Result<Expr, &'static str> {
-//     match e {
-//         Expr::Pair(_, b) => Ok(*b),
-//         _ => Err("not a pair"),
-//     }
-// }
 
 fn self_eval(l: Literal) -> Value {
     match l {
@@ -107,7 +115,10 @@ fn self_eval(l: Literal) -> Value {
 }
 
 fn lookup(v: String, env: &Env) -> Result<Value, &'static str>{
-    Err("variable could not be found")
+    match env.hash.get(&v) {
+        Some(v) => Ok(v.clone()),
+        None => Err("variable could not be found"),
+    }
 }
 
 fn apply(proc: Value, operands: Vec<Box<Value>>) -> Result<Value, &'static str> {
@@ -163,12 +174,27 @@ fn print(r: Result<Value, &'static str>) {
         Err(s) => println!("{}", s),
     }
 }
+
+fn builtin_add(args: Vec<Box<Value>>) -> Value {
+    Value::NIL
+}
+
+fn init(env: &mut Env) {
+    let plus = Proc::Builtin(String::from("+"), -1, builtin_add);
+    env.hash.insert("+".to_string(), Value::Proc(plus));   
+}
+
+fn read() -> Expr {
+    Expr::VariableReferenceExpr(String::from("+"))
+}
+
 fn main() {
-    let global_env = Env {
+    let mut global_env = &mut Env {
         hash: HashMap::new(),
         parent: Option::None,
     };
 
-    let e = Expr::LiteralExpr(Literal::Number(7));
-    print(eval(e, &global_env));
+    init(global_env);
+
+    print(eval(read(), &global_env));
 }
