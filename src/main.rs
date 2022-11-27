@@ -8,6 +8,7 @@ TODO
  */
 use core::fmt;
 use std::collections::HashMap;
+use std::io::Write;
 
 #[derive(Clone)]
 enum Proc {
@@ -188,7 +189,23 @@ fn read() -> Expr {
     Expr::VariableReferenceExpr(String::from("+"))
 }
 
+fn show_init_banner_and_prompt(version: &str, prompt: &str) {
+    println!("abanos v{} (c) 2022 Omar Shorbaji", version);
+    print!("{} ", prompt);
+    std::io::stdout().flush();
+
+    return;
+}
+
+fn process(line: &mut String, is_multiline: &mut bool) {
+
+}
 fn main() {
+    let version = "0.1";
+    let prompt = "$";
+
+    show_init_banner_and_prompt(version, prompt);
+
     let mut global_env = &mut Env {
         hash: HashMap::new(),
         parent: Option::None,
@@ -196,5 +213,17 @@ fn main() {
 
     init(global_env);
 
-    print(eval(read(), &global_env));
+
+
+    let mut is_multiline: bool = false;
+    let mut line: String = String::new();
+
+    loop {
+        std::io::stdin().read_line(&mut line);
+        process(&mut line, &mut is_multiline);
+        if !is_multiline {
+            print!("{} ", prompt);
+            std::io::stdout().flush();
+        }
+    }
 }
