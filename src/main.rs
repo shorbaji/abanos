@@ -200,9 +200,11 @@ fn show_init_banner_and_prompt(version: &str, prompt: &str) {
 fn process(line: &mut String, is_multiline: &mut bool) {
 
 }
+
+let version = "0.1";
+let prompt = "$";
+
 fn main() {
-    let version = "0.1";
-    let prompt = "$";
 
     show_init_banner_and_prompt(version, prompt);
 
@@ -212,8 +214,6 @@ fn main() {
     };
 
     init(global_env);
-
-
 
     let mut is_multiline: bool = false;
     let mut line: String = String::new();
