@@ -1,19 +1,22 @@
-/*
-TODO
+// TODO
+// - read
+// - program structure (7.1.6) including define
 
-- read
-- repl
-- program structure (7.1.6) including define
-
- */
 use core::fmt;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::Write;
 
 #[derive(Clone)]
 enum Proc {
     Builtin(String, i8, fn (Vec<Box<Value>>) -> Value),
     Defined(Box<Expr>, Vec<Box<Expr>>),
+}
+
+impl Proc {
+    fn apply(&self, operands: Vec<Box<Value>>) -> Result<Value, &'static str> {
+        Ok(Value::NIL)
+    }
+
 }
 
 impl fmt::Display for Proc {
@@ -27,11 +30,14 @@ impl fmt::Display for Proc {
 
     }
 }
+
+
 #[derive(Clone)]
 enum Boolean {
     True,
     False,
 }
+
 #[derive(Clone)]
 enum Value {
     Boolean(Boolean),
@@ -49,35 +55,11 @@ enum Value {
     Vector,
 }
 
-#[derive(Clone)]
-
-enum Expr {
-    VariableReferenceExpr(String),
-    LiteralExpr(Literal),
-    ProcedureCallExpr(Box<Expr>, Vec<Box<Expr>>),
-    LambdaExpr(Box<Expr>, Vec<Box<Expr>>),
-    ConditionalExpr(Box<Expr>, Box<Expr>, Box<Expr>),
-    AssignmentExpr(Box<Expr>, Box<Expr>),
-    IncludeExpr, // To be implemented
+impl Value {
+    fn print(&self) -> Option<String> {
+        Some(format!("{}", self))
+    }
 }
-
-#[derive(Clone)]
-enum Literal {
-    Boolean(Boolean),
-    Bytevector,
-    Char(char),
-    Number(Number),
-    String(String),
-    Vector,
-}
-
-struct Env {
-    hash: HashMap<String, Value>,
-    parent: Option<Box<Env>>,
-}
-
-type Location = i64;
-type Number = i64;
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -104,126 +86,215 @@ impl fmt::Display for Value {
     }
 }
 
-fn self_eval(l: Literal) -> Value {
-    match l {
-        Literal::Boolean(b) => Value::Boolean(b),
-        Literal::Bytevector => Value::Bytevector,
-        Literal::Char(c) => Value::Char(c),
-        Literal::Number(n) => Value::Number(n),
-        Literal::String(s) => Value::String(s.clone()),
-        Literal::Vector => Value::Vector,
+#[derive(Clone)]
+enum Expr {
+    VariableReferenceExpr(String),
+    LiteralExpr(Literal),
+    ProcedureCallExpr(Box<Expr>, Vec<Box<Expr>>),
+    LambdaExpr(Box<Expr>, Vec<Box<Expr>>),
+    ConditionalExpr(Box<Expr>, Box<Expr>, Box<Expr>),
+    AssignmentExpr(Box<Expr>, Box<Expr>),
+    IncludeExpr, // To be implemented
+}
+
+impl Expr {    
+    fn is_true(v: Value) -> bool {
+        match v {
+            Value::Boolean(b) => match b {
+                Boolean::True => true,
+                Boolean::False => false,
+            },
+            Value::NIL => false,
+            _ => true,
+        }
     }
 }
 
-fn lookup(v: String, env: &Env) -> Result<Value, &'static str>{
-    match env.hash.get(&v) {
-        Some(v) => Ok(v.clone()),
-        None => Err("variable could not be found"),
+#[derive(Clone)]
+enum Literal {
+    Boolean(Boolean),
+    Bytevector,
+    Char(char),
+    Number(Number),
+    String(String),
+    Vector,
+}
+
+impl Literal {
+    fn self_eval(&self) -> Value {
+        match self {
+            Literal::Boolean(b) => Value::Boolean(b.clone()),
+            Literal::Bytevector => Value::Bytevector,
+            Literal::Char(c) => Value::Char(*c),
+            Literal::Number(n) => Value::Number(*n),
+            Literal::String(s) => Value::String(s.clone()),
+            Literal::Vector => Value::Vector,
+        }
     }
 }
-
-fn apply(proc: Value, operands: Vec<Box<Value>>) -> Result<Value, &'static str> {
-    Ok(Value::NIL)
+struct Env {
+    hash: HashMap<String, Value>,
+    parent: Option<Box<Env>>,
 }
 
-fn evlis(operands: Vec<Box<Expr>>, env: &Env) -> Vec<Box<Value>> {
-    vec![]
-}
-
-fn is_true(v: Value) -> bool {
-    match v {
-        Value::Boolean(b) => match b {
-            Boolean::True => true,
-            Boolean::False => false,
-        },
-        Value::NIL => false,
-        _ => true,
+impl Env {
+    fn builtin_add(args: Vec<Box<Value>>) -> Value {
+        Value::NIL
     }
-}
-fn eval(e: Expr, env: &Env) -> Result<Value, &'static str> {
-    match e {
-        Expr::LiteralExpr(l) => Ok(self_eval(l)),
-        Expr::VariableReferenceExpr(v) => lookup(v, env),
-        Expr::ProcedureCallExpr(operator, operands) => {
-            match eval(* operator, env) {
-                Ok(v) => apply(v, evlis(operands, env)),
-                Err(s) => Err(s)
-            }
-        },
-        Expr::LambdaExpr(formals, body)
-            =>  Ok(Value::Proc(Proc::Defined(formals, body))),
-        Expr::ConditionalExpr(test, consequent, alternate) => {
-            match eval(*test, env) {
-                Ok(v) => match is_true(v) {
-                    true => eval(*consequent, env),
-                    false => eval(*alternate, env),
+        
+    fn new() -> Self {
+        Self {
+            hash: HashMap::new(),
+            parent: Option::None,
+        }
+    }
+
+    fn init(self: &mut Self) {
+        let plus = Proc::Builtin(String::from("+"), -1, Env::builtin_add);
+        self.hash.insert("+".to_string(), Value::Proc(plus)); 
+    }
+ 
+    fn lookup(&self, v: String) -> Result<Value, &'static str>{
+        match self.hash.get(&v) {
+            Some(v) => Ok(v.clone()),
+            None => Err("variable could not be found"),
+        }
+    }
+    
+    fn evlis(&self, operands: Vec<Box<Expr>>) -> Vec<Box<Value>> {
+        vec![]
+    }
+    
+    fn eval(&self, e: Expr) -> Result<Value, &'static str> {
+        match e {
+            Expr::LiteralExpr(l) => Ok(l.self_eval()),
+            Expr::VariableReferenceExpr(v) => self.lookup(v),
+            Expr::ProcedureCallExpr(operator, operands) => {
+                match self.eval(*operator) {
+                    Ok(v) => match v { 
+                        Value::Proc(p) => p.apply(self.evlis(operands)),
+                        _ => Err("not a proc"),
+                    }
+                    Err(s) => Err(s)
                 }
-                Err(e) => Err(e)
-            }
-            
-        },
-        Expr::AssignmentExpr(var, target) =>
-            // need to implement assigment here
-            Ok(Value::Unspecified),
-        Expr::IncludeExpr => Ok(Value::Unspecified),
+            },
+            Expr::LambdaExpr(formals, body) => Ok(Value::Proc(Proc::Defined(formals, body))),
+            Expr::ConditionalExpr(test, consequent, alternate) => {
+                match self.eval(*test) {
+                    Ok(v) => match Expr::is_true(v) {
+                        true => self.eval(*consequent),
+                        false => self.eval(*alternate),
+                    }
+                    Err(e) => Err(e)
+                }
+            },
+            Expr::AssignmentExpr(var, target) =>
+                // need to implement assigment here
+                Ok(Value::Unspecified),
+            Expr::IncludeExpr => Ok(Value::Unspecified),
+        }
     }
+
 }
 
-fn print(r: Result<Value, &'static str>) {
-    match r {
-        Ok(e) => println!("{}", e),
-        Err(s) => println!("{}", s),
-    }
-}
+type Number = i64;
 
-fn builtin_add(args: Vec<Box<Value>>) -> Value {
-    Value::NIL
-}
-
-fn init(env: &mut Env) {
-    let plus = Proc::Builtin(String::from("+"), -1, builtin_add);
-    env.hash.insert("+".to_string(), Value::Proc(plus));   
-}
-
-fn read() -> Expr {
-    Expr::VariableReferenceExpr(String::from("+"))
-}
-
-fn show_init_banner_and_prompt(version: &str, prompt: &str) {
+fn show_init_banner(version: &str) {
     println!("abanos v{} (c) 2022 Omar Shorbaji", version);
-    print!("{} ", prompt);
     std::io::stdout().flush();
 
     return;
 }
 
-fn process(line: &mut String, is_multiline: &mut bool) {
-
+type Lexeme = String;
+struct Lexer {
+    buffer: String,
+    found: VecDeque<Lexeme>,
+    state: i64,
 }
 
-let version = "0.1";
-let prompt = "$";
-
-fn main() {
-
-    show_init_banner_and_prompt(version, prompt);
-
-    let mut global_env = &mut Env {
-        hash: HashMap::new(),
-        parent: Option::None,
-    };
-
-    init(global_env);
-
-    let mut is_multiline: bool = false;
-    let mut line: String = String::new();
-
-    loop {
-        std::io::stdin().read_line(&mut line);
-        process(&mut line, &mut is_multiline);
-        if !is_multiline {
-            print!("{} ", prompt);
-            std::io::stdout().flush();
+impl Lexer {
+    fn new() -> Self {
+        Self {
+            buffer: String::new(),
+            state: 0,
+            found: VecDeque::new(),
         }
     }
+    
+    fn next(&mut self) -> Option<Lexeme> {
+
+        if self.found.is_empty() {
+            std::io::stdin().read_line(&mut self.buffer).expect("could not read line");
+
+            let mut v: VecDeque<String> = self.buffer.replace("(", " ( ")
+                .replace(")", " ) ")
+                .split_whitespace()
+                .map(|x| x.to_string())
+                .collect();
+                self.found.append(&mut v);
+
+            self.buffer = String::new();
+        }
+
+        if self.found.is_empty() {
+            None
+        } else {
+            self.found.pop_front()
+        }
+    }
+}
+
+struct Reader {
+    lexer: Lexer,
+}
+
+impl Reader {
+    fn new() -> Self {
+        Self {
+            lexer: Lexer::new(),
+        }
+    }
+
+    fn read(&mut self) -> Option<Expr> {
+        let next = self.lexer.next();
+        match next {
+            Some(lexeme) => Some(Expr::LiteralExpr(Literal::Number(7))),
+            None => None,
+        }
+    }
+    
+    fn parse(&mut self, lexeme: Lexeme) -> Option<Expr> {
+        None
+
+    }
+}
+
+fn repl(reader: &mut Reader, env: &mut Env) -> Option<String> {
+    let mut i: i64 = 0;
+    let prompt = "$";
+
+    loop {
+        print!("{}{} ", i, prompt);
+        std::io::stdout().flush();
+        match env.eval(reader.read()?) {
+            Ok(s) => println!("{}", s),
+            Err(s) => println!("{}", s),
+        }
+        i = i + 1;
+    }
+
+    None
+}
+
+fn main() {
+    let version = "0.1";
+    show_init_banner(version);
+
+    let mut reader = &mut Reader::new();
+    let mut global_env = Env::new();
+
+    global_env.init();
+
+    repl(reader, &mut global_env);
 }
