@@ -16,7 +16,6 @@ impl Proc {
     fn apply(&self, operands: Vec<Box<Value>>) -> Result<Value, &'static str> {
         Ok(Value::NIL)
     }
-
 }
 
 impl fmt::Display for Proc {
@@ -31,17 +30,13 @@ impl fmt::Display for Proc {
     }
 }
 
-#[derive(Clone)]
-enum Boolean {
-    True,
-    False,
-}
+
 
 type Number = i64;
 
 #[derive(Clone)]
 enum Value {
-    Boolean(Boolean),
+    Boolean(bool),
     Bytevector,
     Char(char),
     Eof,
@@ -59,10 +54,7 @@ enum Value {
 impl Value {
     fn is_true(&self) -> bool {
         match self {
-            Value::Boolean(b) => match b {
-                Boolean::True => true,
-                Boolean::False => false,
-            },
+            Value::Boolean(b) => *b,
             Value::NIL => false,
             _ => true,
         }
@@ -76,10 +68,7 @@ impl Value {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let str = match self {
-            Value::Boolean(b) => format!("{}", match b {
-                Boolean::True => true,
-                Boolean::False => false,
-            }),
+            Value::Boolean(b) => format!("{}", *b),
             Value::Bytevector => String::from("bytevector"),
             Value::Char(c) => format!("{}", c),
             Value::Eof => String::from("eof"),            
@@ -114,7 +103,7 @@ impl Expr {
 
 #[derive(Clone)]
 enum Literal {
-    Boolean(Boolean),
+    Boolean(bool),
     Bytevector,
     Char(char),
     Number(Number),
