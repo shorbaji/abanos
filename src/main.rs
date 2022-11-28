@@ -31,12 +31,13 @@ impl fmt::Display for Proc {
     }
 }
 
-
 #[derive(Clone)]
 enum Boolean {
     True,
     False,
 }
+
+type Number = i64;
 
 #[derive(Clone)]
 enum Value {
@@ -56,6 +57,17 @@ enum Value {
 }
 
 impl Value {
+    fn is_true(&self) -> bool {
+        match self {
+            Value::Boolean(b) => match b {
+                Boolean::True => true,
+                Boolean::False => false,
+            },
+            Value::NIL => false,
+            _ => true,
+        }
+    }
+
     fn print(&self) -> Option<String> {
         Some(format!("{}", self))
     }
@@ -98,16 +110,6 @@ enum Expr {
 }
 
 impl Expr {    
-    fn is_true(v: Value) -> bool {
-        match v {
-            Value::Boolean(b) => match b {
-                Boolean::True => true,
-                Boolean::False => false,
-            },
-            Value::NIL => false,
-            _ => true,
-        }
-    }
 }
 
 #[derive(Clone)]
@@ -181,7 +183,7 @@ impl Env {
             Expr::LambdaExpr(formals, body) => Ok(Value::Proc(Proc::Defined(formals, body))),
             Expr::ConditionalExpr(test, consequent, alternate) => {
                 match self.eval(*test) {
-                    Ok(v) => match Expr::is_true(v) {
+                    Ok(v) => match v.is_true() {
                         true => self.eval(*consequent),
                         false => self.eval(*alternate),
                     }
@@ -197,14 +199,7 @@ impl Env {
 
 }
 
-type Number = i64;
-
-fn show_init_banner(version: &str) {
-    println!("abanos v{} (c) 2022 Omar Shorbaji", version);
-    std::io::stdout().flush();
-
-    return;
-}
+// read
 
 type Lexeme = String;
 struct Lexer {
@@ -270,6 +265,9 @@ impl Reader {
     }
 }
 
+
+// repl
+
 fn repl(reader: &mut Reader, env: &mut Env) -> Option<String> {
     let mut i: i64 = 0;
     let prompt = "$";
@@ -285,6 +283,13 @@ fn repl(reader: &mut Reader, env: &mut Env) -> Option<String> {
     }
 
     None
+}
+
+fn show_init_banner(version: &str) {
+    println!("abanos v{} (c) 2022 Omar Shorbaji", version);
+    std::io::stdout().flush();
+
+    return;
 }
 
 fn main() {
