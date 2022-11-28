@@ -30,8 +30,6 @@ impl fmt::Display for Proc {
     }
 }
 
-
-
 type Number = i64;
 
 #[derive(Clone)]
