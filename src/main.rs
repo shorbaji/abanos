@@ -132,10 +132,14 @@ impl Env {
     }
         
     fn new() -> Self {
-        Self {
+        let mut env = Self {
             hash: HashMap::new(),
             parent: Option::None,
-        }
+        };
+
+        env.init();
+
+        env
     }
 
     fn init(self: &mut Self) {
@@ -255,38 +259,47 @@ impl Reader {
 
 // repl
 
-fn repl(reader: &mut Reader, env: &mut Env) -> Option<String> {
-    let mut i: i64 = 0;
-    let prompt = "$";
-
-    loop {
-        print!("{}{} ", i, prompt);
-        std::io::stdout().flush();
-        match env.eval(reader.read()?) {
-            Ok(s) => println!("{}", s),
-            Err(s) => println!("{}", s),
-        }
-        i = i + 1;
-    }
-
-    None
+struct Repl {
+    reader: Reader,
+    global_env: Env,
 }
 
-fn show_init_banner(version: &str) {
-    println!("abanos v{} (c) 2022 Omar Shorbaji", version);
-    std::io::stdout().flush();
+impl Repl {
+    fn new() -> Self {    
+        Self {
+            reader: Reader::new(),
+            global_env: Env::new(),
+        }
+    }
 
-    return;
+    fn show_banner(&mut self) -> &mut Self {
+        let version = "0.1";
+
+        println!("abanos v{} (c) 2022 Omar Shorbaji", version);
+        std::io::stdout().flush();
+    
+        self
+    }
+    
+        fn go(&mut self) -> Option<String> {
+        let mut i: i64 = 0;
+        let prompt = "$";
+    
+        loop {
+            print!("{}{} ", i, prompt);
+            std::io::stdout().flush();
+            match &self.global_env.eval(self.reader.read()?) {
+                Ok(s) => println!("{}", s),
+                Err(s) => println!("{}", s),
+            }
+            i = i + 1;
+        }
+    
+        None
+    }
+    
 }
 
 fn main() {
-    let version = "0.1";
-    show_init_banner(version);
-
-    let mut reader = &mut Reader::new();
-    let mut global_env = Env::new();
-
-    global_env.init();
-
-    repl(reader, &mut global_env);
+    Repl::new().show_banner().go();
 }
