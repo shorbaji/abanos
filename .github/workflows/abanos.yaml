@@ -72,5 +72,8 @@ jobs:
           project_id: ${{secrets.GCP_ABANOS_IO_PROD_PROJECT}}
           workload_identity_provider: ${{secrets.GCP_WORKLOAD_IDENTITY_POOL}}
       - name: Upload to GCS
-        run: |
-          gsutil cp -Z ${{matrix.binary}} gs://abanos/release/bin/downloads/${{ steps.date.outputs.date }}/${{matrix.arch}}/${{matrix.name}}/
+        uses: 'google-github-actions/upload-cloud-storage@v2'
+        with:
+          path: ${{matrix.binary}}
+          gzip: true
+          destination: abanos/release/bin/downloads/${{ steps.date.outputs.date }}/${{matrix.arch}}/${{matrix.name}}/
