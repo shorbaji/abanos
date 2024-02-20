@@ -24,7 +24,7 @@ jobs:
       run: cargo test --verbose
 
   package:
-    need: build
+    needs: build
     name: Build for ${{matrix.os}}-${{ matrix.arg }}
     runs-on: ${{ matrix.os }}
     strategy:
