@@ -7,6 +7,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+/// Value
+/// represents a value or object in the language
+/// continuations and environments are first-class objects
+/// and so is a User
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Value {
     Boolean(bool),

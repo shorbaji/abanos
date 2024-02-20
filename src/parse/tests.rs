@@ -1,6 +1,6 @@
-use crate::parse::{error::ReadError, Expr, Parser};
+use crate::parse::{error::ParseError, Expr, Parser};
 
-fn test_meta(s: &str, expected: Vec<Result<Expr, ReadError>>) {
+fn test_meta(s: &str, expected: Vec<Result<Expr, ParseError>>) {
     let reader = Parser::new(s.as_bytes());
 
     for (expr, x) in reader.zip(expected) {
@@ -34,7 +34,7 @@ fn test_bytevector() {
 
     let expected = vec![
         Ok(Expr::Bytevector(vec![1, 2, 3])),
-        Err(ReadError::UnexpectedToken("512".to_string(), 1)),
+        Err(ParseError::UnexpectedToken("512".to_string(), 1)),
     ];
 
     test_meta(s, expected);
@@ -166,7 +166,7 @@ fn test_conditional() {
             Box::new(Expr::Number(String::from("1"))),
             Box::new(Expr::Number(String::from("2"))),
         )),
-        Err(ReadError::UnexpectedToken("3".to_string(), 1)),
+        Err(ParseError::UnexpectedToken("3".to_string(), 1)),
     ];
 
     test_meta(s, expected);
@@ -252,9 +252,9 @@ fn test_recover() {
     let s = "(if 1) 1 ( ( ( ( if )))) 7";
 
     let expected = vec![
-        Err(ReadError::UnexpectedToken(")".to_string(), 1)),
+        Err(ParseError::UnexpectedToken(")".to_string(), 1)),
         Ok(Expr::Number(String::from("1"))),
-        Err(ReadError::UnexpectedToken(")".to_string(), 4)),
+        Err(ParseError::UnexpectedToken(")".to_string(), 4)),
         Ok(Expr::Number(String::from("7"))),
     ];
 

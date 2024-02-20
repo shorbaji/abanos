@@ -1,5 +1,5 @@
 //! Abanos continuations
-
+//! provides Arg, Context, Closure, and Continuation
 use crate::{env::Env, expr::Expr, user::User, value::Value};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -64,6 +64,10 @@ impl TryInto<Vec<Value>> for Arg {
     }
 }
 
+/// Context - represents the context in which an expression is evaluated
+/// - r - the lexical environment
+/// - d - the dynamic environment
+/// - user - the user 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Context {
     #[serde(skip)]
@@ -84,6 +88,13 @@ impl Context {
     }
 }
 
+/// Closure
+/// represents a closure of a continuation
+/// each variant corresponds to a function
+/// and holds:
+/// 1. captured variables,
+/// 1. the context in which the content will run
+/// 1. the closure for the next continuation
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Closure {
     Apply {
@@ -173,6 +184,8 @@ pub enum Closure {
     },
 }
 
+/// Continuation
+/// consists of a closure and an argument
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Continuation {
     pub closure: Closure,
