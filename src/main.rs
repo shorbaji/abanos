@@ -35,11 +35,11 @@ enum Mode {
 #[command(author, version, about, long_about = None)]
 struct Args {
     /// Optional host to connect to
-    #[arg(short = 'H', long, default_value = "127.0.0.1")]
+    #[arg(short = 'H', long, default_value = "api.abanos.io")]
     host: String,
 
     /// Optional port to connect to
-    #[arg(short, long, default_value_t = 8080)]
+    #[arg(short, long, default_value_t = 443)]
     port: u16,
 
     /// Optional verbosity level
@@ -49,6 +49,9 @@ struct Args {
     /// Optional mode
     #[arg(short, long, value_enum, default_value = "repl")]
     mode: Mode,
+
+    #[arg(long, default_value = "false")]
+    no_tls: bool,
 }
 
 /// Main entry point for repl mode
@@ -64,7 +67,7 @@ fn repl(args: Args) -> Result<(), String> {
 
     debug!("args: {args:?}");
 
-    connection::Connection::new(args.host, args.port) // create a connection
+    connection::Connection::new(args.host, args.port, args.no_tls) // create a connection
         .healthcheck() // check its health
         .map(|conn| {
             // if it is healthy
