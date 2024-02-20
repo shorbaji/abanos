@@ -22,7 +22,6 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
-
   package:
     needs: build
     name: Build for ${{matrix.os}}-${{matrix.arch}}
