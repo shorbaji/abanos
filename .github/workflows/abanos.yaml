@@ -25,28 +25,28 @@ jobs:
 
   package:
     needs: build
-    name: Build for ${{matrix.os}}-${{ matrix.arg }}
-    runs-on: ${{ matrix.os }}
+    name: Build for ${{matrix.os}}-${{matrix.arch}}
+    runs-on: ${{matrix.os}}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        arg: [x86_64]
+        arch: [x86_64]
         include: 
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
           - os: macos-latest
             target: x86_64-apple-darwin
           - os: windows-latest
-            target: x86_64-pc-windows-masvc
+            target: x86_64-pc-windows-msvc
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
         with:
           toolchain: stable
-          target: ${{ matrix.target }}
+          target: ${{matrix.target}}
           profile: minimal
       - name: Build binary
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{matrix.target}}
       - name: Upload binary
         uses: actions/upload-artifact@v2
         with:
