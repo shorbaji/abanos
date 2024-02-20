@@ -6,6 +6,8 @@ use std::iter::Peekable;
 
 use logos::{Lexer, Logos};
 
+/// Token
+/// lexical analyzer based on r7rs small 
 #[derive(Serialize, Deserialize, Logos, Debug, Clone, PartialEq)]
 pub enum Token {
     #[regex(r"(#(([tT][rR][uU][eE])|([fF][aA][lL][sS][eE])|([tT]|[fF])))", to_bool)]
@@ -110,6 +112,11 @@ fn to_string(lex: &mut Lexer<Token>) -> Option<String> {
     Some(s)
 }
 
+/// DLexer
+/// Implements delimiting
+/// From r7rs small: "Identifiers that do not begin with a vertical line are 
+/// terminated by a delimiter or by the end of the input."
+/// dot, numbers, characters, and booleans"
 pub struct DLexer<'a> {
     lexer: Peekable<Lexer<'a, Token>>,
 }
@@ -180,6 +187,10 @@ impl Iterator for DLexer<'_> {
     }
 }
 
+/// BufferedLexer
+/// This struct wraps a DLexer and provides a buffered interface to it.
+/// It implements a refresh to read from a BufRead and fill the token buffer.
+/// until EOF is reached.
 pub struct BufferedLexer<R>
 where
     R: std::io::BufRead,
@@ -200,8 +211,6 @@ where
     }
 
     /// Refresh the buffer queue of tokens if empty
-    ///
-    ///
     pub fn refresh(&mut self) -> Result<(), std::io::Error> {
         loop {
             if self.tokens.is_empty() {

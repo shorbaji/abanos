@@ -1,6 +1,9 @@
 // abanos expressions
 use serde::{Deserialize, Serialize};
 
+/// Expr
+/// represents an expression in the abanos language
+/// based on r7rs small
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum Expr {
     Apply(Box<Expr>, Vec<Expr>),

@@ -1,17 +1,22 @@
-//! abanos parser
+//! Parser for the abanos programming language
+//!
+//! A parser for the abanos programming language.
+//! Provides Parser struct whith is an Iterator over Result<Expr, ReadError>
+//! Implemented mostly based on r7rs small for scheme
 mod error;
 mod lexer;
 #[cfg(test)]
 mod tests;
 
 use atty::Stream;
-use error::ReadError;
+use error::ParseError;
 use lexer::Token;
 pub use lib::expr::Expr;
 use std::io::Write;
 use std::iter::Peekable;
 
 /// abanos parser
+/// 
 pub struct Parser<R>
 where
     R: std::io::BufRead,
@@ -23,14 +28,20 @@ impl<R> Iterator for Parser<R>
 where
     R: std::io::BufRead,
 {
-    type Item = Result<Expr, ReadError>;
+    type Item = Result<Expr, ParseError>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // interactive prompt if stdin is a tty
         if atty::is(Stream::Stdin) {
             print!(">> ");
             std::io::stdout().flush().unwrap();
         }
 
+        // read next token from lexer
+        // no more tokens results in no more expressions (None)
+        // lexical error results in error and we recover
+        // otherwise we parse the expression
+        // if we get a parse error we recover
         match self.lexer.peek() {
             None => None,
             Some(Err(e)) => Some(Err((e, 0).into()).inspect_err(|e| self.recover(e))),
@@ -39,6 +50,8 @@ where
     }
 }
 
+/// The parser is an iterator over Result<Expr, ParseError>
+/// generic over BufRead reader, e.g. std::io::Stdin::lock()
 impl<R> Parser<R>
 where
     R: std::io::BufRead,
@@ -49,9 +62,13 @@ where
         }
     }
 
-    fn recover(&mut self, e: &ReadError) {
+    fn recover(&mut self, e: &ParseError) {
+        // recover from a parse error
+        // the recover strategy is to skip tokens until we find a matching right parenthesis
+        // or until we reach the end of the file
+        // we implement this by maintaining a counter of left and right parenthesis
         match e {
-            ReadError::UnexpectedToken(_, mut r) | ReadError::LexicalError(mut r) => loop {
+            ParseError::UnexpectedToken(_, mut r) | ParseError::LexicalError(mut r) => loop {
                 let token = self.lexer.next();
                 if r == 0 {
                     break;
@@ -68,13 +85,16 @@ where
                     _ => (),
                 }
             },
-            ReadError::UnexpectedEof => (),
-            ReadError::ReadLineError => (),
+            ParseError::UnexpectedEof => (),
+            ParseError::ReadLineError => (),
         }
     }
 
     /// this is the top level of the parser
-    fn expr(&mut self, r: u16) -> Result<Expr, ReadError> {
+    /// it is the entry point for parsing an expression
+    /// implemented as a recursive descent parser
+    /// we maintain a recovery depth r to allow recovery
+    fn expr(&mut self, r: u16) -> Result<Expr, ParseError> {
         match self.peek(r)? {
             Token::Boolean(b) => self.boolean(b),
             Token::Char(c) => self.char(c),
@@ -89,36 +109,35 @@ where
     }
 
     #[inline]
-    fn boolean(&mut self, b: bool) -> Result<Expr, ReadError> {
+    fn boolean(&mut self, b: bool) -> Result<Expr, ParseError> {
         self.lexer.next();
         Ok(Expr::Boolean(b))
     }
 
     #[inline]
-    fn char(&mut self, c: char) -> Result<Expr, ReadError> {
+    fn char(&mut self, c: char) -> Result<Expr, ParseError> {
         self.lexer.next();
         Ok(Expr::Char(c))
     }
 
     #[inline]
-    fn string(&mut self, s: String) -> Result<Expr, ReadError> {
+    fn string(&mut self, s: String) -> Result<Expr, ParseError> {
         self.lexer.next();
         Ok(Expr::String(s))
     }
 
     #[inline]
-    fn number(&mut self, n: String) -> Result<Expr, ReadError> {
+    fn number(&mut self, n: String) -> Result<Expr, ParseError> {
         self.lexer.next();
         Ok(Expr::Number(n))
     }
 
-    #[inline]
-    fn quotation(&mut self, r: u16) -> Result<Expr, ReadError> {
+    fn quotation(&mut self, r: u16) -> Result<Expr, ParseError> {
         self.lexer.next();
         self.datum(r)
     }
 
-    fn datum(&mut self, r: u16) -> Result<Expr, ReadError> {
+    fn datum(&mut self, r: u16) -> Result<Expr, ParseError> {
         match self.peek(r)? {
             Token::Boolean(b) => self.boolean(b),
             Token::Char(c) => self.char(c),
@@ -129,11 +148,12 @@ where
             Token::HashOpen => self.vector(r),
             Token::ParenLeft => self.compound_datum(r),
             Token::Identifier(_) => self.variable(r),
-            t => Err(ReadError::UnexpectedToken(format!("{t:?}"), r)),
+            t => Err(ParseError::UnexpectedToken(t, r)),
         }
     }
 
-    fn compound_datum(&mut self, r: u16) -> Result<Expr, ReadError> {
+    // a compound datum starts with a left parenthesis
+    fn compound_datum(&mut self, r: u16) -> Result<Expr, ParseError> {
         self.lexer.next();
         let v = self.zero_or_more(Parser::datum, r + 1)?;
         self.paren_right(r + 1)?;
@@ -141,7 +161,7 @@ where
     }
 
     #[inline]
-    fn bytevector(&mut self, r: u16) -> Result<Expr, ReadError> {
+    fn bytevector(&mut self, r: u16) -> Result<Expr, ParseError> {
         self.lexer.next();
         let v = self.zero_or_more(Parser::byte, r + 1)?;
         self.paren_right(r + 1)?;
@@ -150,21 +170,21 @@ where
     }
 
     #[inline]
-    fn byte(&mut self, r: u16) -> Result<u8, ReadError> {
+    fn byte(&mut self, r: u16) -> Result<u8, ParseError> {
         match self.peek(r)? {
             Token::Number(n) => match n.parse::<u8>() {
                 Ok(b) => {
                     self.lexer.next();
                     Ok(b)
                 }
-                Err(_) => Err(ReadError::UnexpectedToken(n, r)),
+                Err(_) => Err(ParseError::UnexpectedToken(Token::Number(n), r)),
             },
-            t => Err(ReadError::UnexpectedToken(format!("{t:?}"), r)),
+            t => Err(ParseError::UnexpectedToken(t, r)),
         }
     }
 
     #[inline]
-    fn vector(&mut self, r: u16) -> Result<Expr, ReadError> {
+    fn vector(&mut self, r: u16) -> Result<Expr, ParseError> {
         self.lexer.next();
         let v = self.zero_or_more(Parser::datum, r + 1)?;
         self.paren_right(r + 1)?;
@@ -172,19 +192,19 @@ where
     }
 
     #[inline]
-    fn variable(&mut self, r: u16) -> Result<Expr, ReadError> {
+    fn variable(&mut self, r: u16) -> Result<Expr, ParseError> {
         match self.peek(r)? {
             Token::Identifier(id) => {
                 self.lexer.next();
                 Ok(Expr::Variable(id))
             }
-            t => Err(ReadError::UnexpectedToken(format!("{t:?}"), r)),
+            t => Err(ParseError::UnexpectedToken(t, r)),
         }
     }
 
     // a compound expression starts with a left parenthesis
     // it is either one of the special forms or otherwise an application
-    fn compound(&mut self, r: u16) -> Result<Expr, ReadError> {
+    fn compound(&mut self, r: u16) -> Result<Expr, ParseError> {
         self.paren_left(r)?;
 
         match self.peek(r + 1)? {
@@ -197,7 +217,7 @@ where
         }
     }
 
-    fn definition(&mut self, r: u16) -> Result<Expr, ReadError> {
+    fn definition(&mut self, r: u16) -> Result<Expr, ParseError> {
         self.lexer.next(); // consume define
 
         match self.peek(r)? {
@@ -206,7 +226,7 @@ where
         }
     }
 
-    fn define_lambda(&mut self, r: u16) -> Result<Expr, ReadError> {
+    fn define_lambda(&mut self, r: u16) -> Result<Expr, ParseError> {
         self.paren_left(r)?;
         let symbol = self.variable(r + 1)?;
         Ok(Expr::Define(
@@ -215,7 +235,7 @@ where
         ))
     }
 
-    fn define_variable(&mut self, r: u16) -> Result<Expr, ReadError> {
+    fn define_variable(&mut self, r: u16) -> Result<Expr, ParseError> {
         match self.peek(r)? {
             Token::Identifier(id) => {
                 self.lexer.next(); // consume identifier
@@ -224,11 +244,11 @@ where
                 self.paren_right(r)?;
                 Ok(Expr::Define(Box::new(symbol), Box::new(expr)))
             }
-            t => Err(ReadError::UnexpectedToken(format!("{t:?}"), r)),
+            t => Err(ParseError::UnexpectedToken(t, r)),
         }
     }
 
-    fn conditional(&mut self, r: u16) -> Result<Expr, ReadError> {
+    fn conditional(&mut self, r: u16) -> Result<Expr, ParseError> {
         self.lexer.next(); // consume if
 
         let predicate = self.expr(r)?;
@@ -243,14 +263,14 @@ where
         ))
     }
 
-    fn lambda(&mut self, r: u16) -> Result<Expr, ReadError> {
+    fn lambda(&mut self, r: u16) -> Result<Expr, ParseError> {
         self.lexer.next(); // consume lambda
         self.paren_left(r)?;
         self.formals_and_body(r + 1)
     }
 
     // used by (define (foo ...)) and by lambda
-    fn formals_and_body(&mut self, r: u16) -> Result<Expr, ReadError> {
+    fn formals_and_body(&mut self, r: u16) -> Result<Expr, ParseError> {
         let formals = self.zero_or_more(Parser::expr, r)?;
         self.paren_right(r)?;
         let body = self.zero_or_more(Parser::expr, r - 1)?;
@@ -258,7 +278,7 @@ where
         Ok(Expr::Lambda(formals, body))
     }
 
-    fn long_quotation(&mut self, r: u16) -> Result<Expr, ReadError> {
+    fn long_quotation(&mut self, r: u16) -> Result<Expr, ParseError> {
         self.lexer.next(); // consume quote
         let d = self.datum(r)?;
         self.paren_right(r)?;
@@ -266,7 +286,7 @@ where
         Ok(d)
     }
 
-    fn assignment(&mut self, r: u16) -> Result<Expr, ReadError> {
+    fn assignment(&mut self, r: u16) -> Result<Expr, ParseError> {
         self.lexer.next(); // consume set!
         let v = self.expr(r)?;
         let e = self.expr(r)?;
@@ -275,7 +295,7 @@ where
     }
 
     // (<operator> <operand>*)
-    fn application(&mut self, r: u16) -> Result<Expr, ReadError> {
+    fn application(&mut self, r: u16) -> Result<Expr, ParseError> {
         let operator = self.expr(r)?;
         let operands = self.zero_or_more(Parser::expr, r)?;
         self.paren_right(r)?;
@@ -283,44 +303,44 @@ where
     }
 
     #[inline]
-    fn paren_left(&mut self, r: u16) -> Result<(), ReadError> {
+    fn paren_left(&mut self, r: u16) -> Result<(), ParseError> {
         match self.peek(r)? {
             Token::ParenLeft => {
                 self.lexer.next();
                 Ok(())
             }
-            t => Err(ReadError::UnexpectedToken(format!("{t:?}"), r)),
+            t => Err(ParseError::UnexpectedToken(t, r)),
         }
     }
 
     #[inline]
-    fn paren_right(&mut self, r: u16) -> Result<(), ReadError> {
+    fn paren_right(&mut self, r: u16) -> Result<(), ParseError> {
         match self.peek(r)? {
             Token::ParenRight => {
                 self.lexer.next();
                 Ok(())
             }
-            t => Err(ReadError::UnexpectedToken(format!("{t:?}"), r)),
+            t => Err(ParseError::UnexpectedToken(t, r)),
         }
     }
 
     // utility functions
     // peek next token from lexer and raise error if EOF
     // need r: recovery depth in case we get a lexical error
-    fn peek(&mut self, r: u16) -> Result<lexer::Token, ReadError> {
+    fn peek(&mut self, r: u16) -> Result<lexer::Token, ParseError> {
         match self.lexer.peek().cloned() {
             Some(Ok(token)) => Ok(token),
             Some(Err(e)) => Err((&e, r).into()),
-            None => Err(ReadError::UnexpectedEof),
+            None => Err(ParseError::UnexpectedEof),
         }
     }
 
     // zero or more <T> items by calling a function f while it returns Ok(<T>)
     fn zero_or_more<T>(
         &mut self,
-        f: fn(&mut Self, u16) -> Result<T, ReadError>,
+        f: fn(&mut Self, u16) -> Result<T, ParseError>,
         r: u16,
-    ) -> Result<Vec<T>, ReadError> {
+    ) -> Result<Vec<T>, ParseError> {
         Ok(std::iter::repeat_with(|| f(self, r))
             .take_while(|result| result.is_ok())
             .map(|result| result.unwrap())

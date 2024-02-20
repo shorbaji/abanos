@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-
+# 
+# This script is used to build the abanos project for multiple platforms
+# binaries are placed in the target/www directory
+#
+# usage: ./cicd/build.bash (from the root of the project)
+#
 set -o errexit   # abort on nonzero exitstatus
 set -o nounset   # abort on unbound variable
 set -o pipefail  # don't hide errors within pipes

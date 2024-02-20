@@ -14,11 +14,12 @@ use lib::value::Value;
 pub struct Connection {
     host: String,
     port: u16,
+    no_tls: bool,
 }
 
 impl Connection {
-    pub fn new(host: String, port: u16) -> Connection {
-        Connection { host, port }
+    pub fn new(host: String, port: u16, no_tls: bool) -> Connection {
+        Connection { host, port, no_tls }
     }
 
     /// Check the health of the server
@@ -27,7 +28,8 @@ impl Connection {
     /// the connection if the server responds with a 200 OK status code. Otherwise, it
     /// will return an error.
     pub fn healthcheck(&self) -> Result<&Self, String> {
-        let url = format!("http://{}:{}/health", self.host, self.port);
+        let protocol = if self.no_tls { "http" } else { "https" };
+        let url = format!("{}://{}:{}/api/health", protocol, self.host, self.port);
         debug!("health check calling {url}");
 
         ureq::get(url.as_str())
@@ -53,7 +55,8 @@ impl Connection {
 
     #[allow(clippy::result_large_err)]
     pub fn send(&self, expr: Expr) -> Result<Value, String> {
-        let url = format!("http://{}:{}/eval", self.host, self.port);
+        let protocol = if self.no_tls { "http" } else { "https" };
+        let url = format!("{}://{}:{}/api/eval", protocol, self.host, self.port);
 
         match ureq::post(url.as_str()).send_json(expr) {
             Ok(response) => {

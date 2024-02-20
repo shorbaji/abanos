@@ -13,6 +13,15 @@ pub enum EnvMsg {
     Set(String, Value, oneshot::Sender<Option<Value>>),
 }
 
+/// Env
+/// represents the environment in which expressions are evaluated
+/// Local represents a traditional environment with:
+/// 1. a hashmap
+/// 2. a parent environment
+///
+/// Dust represents the distributed univeral symbol table with:
+/// 1. a default path for the search, e.g. /usr/johndoe
+/// 2. a channel to send a message to the DUST server
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Env {
     #[serde(skip)]
