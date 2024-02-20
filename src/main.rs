@@ -1,6 +1,6 @@
-//! abanos cli
+//! abanos
 //!
-//! Command line interface for the abanos programming language.
+//! The command line interface for the abanos programming language.
 //!
 //! Usage: abanos [OPTIONS]
 //!
@@ -20,10 +20,18 @@ mod connection;
 #[doc(hidden)]
 mod parse;
 
-use clap::{Parser, ValueEnum};
+use clap::Parser;
 
 /// Mode
-#[derive(ValueEnum, Clone, Debug)]
+///
+/// The CLI tool can run in two modes: repl and serialize.
+/// In repl mode, the tool will 
+/// 1. read expressions from stdin,
+/// 1. send them to the server for evaluation, and
+/// 1. print the result.
+/// In serialize mode, the tool will read expressions from stdin,
+/// serialize them as JSON, and output the JSON to stdout.
+#[derive(clap::ValueEnum, Clone, Debug)]
 enum Mode {
     Repl,
     Serialize,
@@ -34,17 +42,13 @@ enum Mode {
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Optional host to connect to
-    #[arg(short = 'H', long, default_value = "api.abanos.io")]
-    host: String,
-
-    /// Optional port to connect to
-    #[arg(short, long, default_value_t = 443)]
-    port: u16,
-
     /// Optional verbosity level
     #[arg(short, long)]
     debug: bool,
+
+    /// Optional host to connect to
+    #[arg(short = 'H', long, default_value = "api.abanos.io")]
+    host: String,
 
     /// Optional mode
     #[arg(short, long, value_enum, default_value = "repl")]
@@ -52,6 +56,10 @@ struct Args {
 
     #[arg(long, default_value = "false")]
     no_tls: bool,
+
+    /// Optional port to connect to
+    #[arg(short, long, default_value_t = 443)]
+    port: u16,
 }
 
 /// Main entry point for repl mode
@@ -98,10 +106,14 @@ fn serialize(_args: Args) -> Result<(), String> {
 
 #[doc(hidden)]
 fn main() -> Result<(), String> {
+
+    // Parse command line arguments
     let args = Args::parse();
 
+    // Set the log level depending on --debug command line argument
     simple_log::quick!(if args.debug { "debug" } else { "info" });
 
+    // Run the CLI tool in the mode based on the mode command line argument
     match args.mode {
         Mode::Repl => repl(args),
         Mode::Serialize => serialize(args),
