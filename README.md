@@ -14,6 +14,7 @@
 
 ```sh
 git clone https://github.com/shorbaji/abanos.git
+cd abanos
 cargo build --release
 ```
 
