@@ -50,6 +50,9 @@ jobs:
           toolchain: stable
           target: ${{matrix.target}}
           profile: minimal
+      - name: Get current date
+        id: date
+        run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
       - name: Install rust
         uses: actions-rs/toolchain@v1
         with:
@@ -72,4 +75,4 @@ jobs:
         with:
           path: ${{matrix.binary}}
           gzip: true
-          destination: abanos/release/bin/downloads/${{ steps.date.outputs.date }}/${{matrix.arch}}/${{matrix.name}}/
+          destination: abanos/release/${{steps.date.outputs.date}}/${{matrix.arch}}/${{matrix.name}}/
