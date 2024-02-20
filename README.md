@@ -1,11 +1,11 @@
 # `abanos`
 
-> the cloud-native programming language
+`the cloud-native programming language`
 
 ## Features
 
-- `hosted runtime` runtimes run in the Cloud at abanos.io
-- `first-class identity` the programming language is multi-tenant 
+- `hosted runtime` runtimes run in the cloud at https://www.abanos.io
+- `first-class identity` multi-tenancy where every computation is associated with a user
 - `values as a service` variables, functions and any function is a service
 - `access management` software sharing
 - `libraries as a service` libraries are services 
