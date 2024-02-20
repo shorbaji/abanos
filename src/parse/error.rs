@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 /// This enum represents the different types of errors that can occur during parsing.
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub enum ParseError {
-    UnexpectedToken(String, u16),
+    UnexpectedToken(lexer::Token, u16),
     UnexpectedEof,
     LexicalError(u16),
     ReadLineError,

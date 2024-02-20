@@ -148,7 +148,7 @@ where
             Token::HashOpen => self.vector(r),
             Token::ParenLeft => self.compound_datum(r),
             Token::Identifier(_) => self.variable(r),
-            t => Err(ParseError::UnexpectedToken(format!("{t:?}"), r)),
+            t => Err(ParseError::UnexpectedToken(t, r)),
         }
     }
 
@@ -177,9 +177,9 @@ where
                     self.lexer.next();
                     Ok(b)
                 }
-                Err(_) => Err(ParseError::UnexpectedToken(n, r)),
+                Err(_) => Err(ParseError::UnexpectedToken(Token::Number(n), r)),
             },
-            t => Err(ParseError::UnexpectedToken(format!("{t:?}"), r)),
+            t => Err(ParseError::UnexpectedToken(t, r)),
         }
     }
 
@@ -198,7 +198,7 @@ where
                 self.lexer.next();
                 Ok(Expr::Variable(id))
             }
-            t => Err(ParseError::UnexpectedToken(format!("{t:?}"), r)),
+            t => Err(ParseError::UnexpectedToken(t, r)),
         }
     }
 
@@ -244,7 +244,7 @@ where
                 self.paren_right(r)?;
                 Ok(Expr::Define(Box::new(symbol), Box::new(expr)))
             }
-            t => Err(ParseError::UnexpectedToken(format!("{t:?}"), r)),
+            t => Err(ParseError::UnexpectedToken(t, r)),
         }
     }
 
@@ -309,7 +309,7 @@ where
                 self.lexer.next();
                 Ok(())
             }
-            t => Err(ParseError::UnexpectedToken(format!("{t:?}"), r)),
+            t => Err(ParseError::UnexpectedToken(t, r)),
         }
     }
 
@@ -320,7 +320,7 @@ where
                 self.lexer.next();
                 Ok(())
             }
-            t => Err(ParseError::UnexpectedToken(format!("{t:?}"), r)),
+            t => Err(ParseError::UnexpectedToken(t, r)),
         }
     }
 
