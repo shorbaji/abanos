@@ -73,5 +73,5 @@ jobs:
           workload_identity_provider: ${{secrets.GCP_WORKLOAD_IDENTITY_POOL}}
       - name: Upload to GCS
         run: |
-          gsutil cp -z ${{matrix.binary}} gs://abanos/release/bin/downloads/${{ steps.date.outputs.date }}/${{matrix.arch}}/${{matrix.name}}
+          gsutil cp -Z ${{matrix.binary}} gs://abanos/release/bin/downloads/${{ steps.date.outputs.date }}/${{matrix.arch}}/${{matrix.name}}/
     
