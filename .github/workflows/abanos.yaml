@@ -63,5 +63,12 @@ jobs:
         with:
           name: ${{matrix.name}}
           path: ${{matrix.binary}}
-        
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v0
+        with:
+          project_id: ${{secrets.GCP_ABANOS_IO_PROD_PROJECT}}
+          workload_identity: ${{secrets.GCP_WORKLOAD_IDENTITY_POOL}}
+      - name: Upload to GCS
+        run: |
+          gsutil cp ${{matrix.binary}} gs://abanos-io-prod/abanos/release/bin/downloads/${{ steps.date.outputs.date }}/${{matrix.name}}
     
