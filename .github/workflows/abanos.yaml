@@ -16,7 +16,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       
     - name: Build
       run: cargo build --verbose
@@ -34,13 +34,19 @@ jobs:
         include: 
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            binary: target/x86_64-unknown-linux-gnu/release/abanos
+            name: abanos-x86_64-linux
           - os: macos-latest
             target: x86_64-apple-darwin
+            binary: target/x86_64-apple-darwin/release/abanos
+            name: abanos-x86_64-darwin
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            binary: target/x86_64-pc-windows-msvc/release/abanos.exe
+            name: abanos-x86_64-windows
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           toolchain: stable
           target: ${{matrix.target}}
@@ -55,7 +61,7 @@ jobs:
       - name: Upload binary
         uses: actions/upload-artifact@v2
         with:
-          name: $ {{ matrix.target }}
-          path: target/${{ matrix.target }}/release
+          name: ${{matrix.name}}
+          path: ${{matrix.binary}}
         
     
