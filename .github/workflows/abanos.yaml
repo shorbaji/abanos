@@ -74,4 +74,3 @@ jobs:
       - name: Upload to GCS
         run: |
           gsutil cp -Z ${{matrix.binary}} gs://abanos/release/bin/downloads/${{ steps.date.outputs.date }}/${{matrix.arch}}/${{matrix.name}}/
-    
