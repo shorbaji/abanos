@@ -1,0 +1,56 @@
+name: Abanos
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Build
+      run: cargo build --verbose
+    - name: Run tests
+      run: cargo test --verbose
+
+  package:
+    need: build
+    name: Build for ${{matrix.os}}-${{ matrix.arg }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        arg: [x86_64]
+        include: 
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-masvc
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          profile: minimal
+      - name: Build binary
+        run: cargo build --release --target ${{ matrix.target }}
+      - name: Upload binary
+        uses: actions/upload-artifact@v2
+        with:
+          name: $ {{ matrix.target }}
+          path: target/${{ matrix.target }}/release
+        
+    
