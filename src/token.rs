@@ -6,15 +6,15 @@ use openidconnect::{
 
 use openidconnect::core::{
     CoreAuthDisplay, CoreClaimName, CoreClaimType, CoreClient, CoreClientAuthMethod, CoreGrantType,
-    CoreIdTokenClaims, CoreIdTokenVerifier, CoreJsonWebKey, CoreJsonWebKeyType, CoreJsonWebKeyUse,
+    CoreJsonWebKey, CoreJsonWebKeyType, CoreJsonWebKeyUse,
     CoreJweContentEncryptionAlgorithm, CoreJweKeyManagementAlgorithm, CoreJwsSigningAlgorithm,
-    CoreResponseMode, CoreResponseType, CoreRevocableToken, CoreSubjectIdentifierType,
+    CoreResponseMode, CoreResponseType, CoreSubjectIdentifierType,
 };
 
 use openidconnect::reqwest::http_client;
 
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
@@ -108,17 +108,14 @@ fn login() -> Result<Token, String> {
     );
 
         // Generate the authorization URL to which we'll redirect the user.
-        let (authorize_url, csrf_state, nonce) = client
+        let (authorize_url, _, _) = client
         .authorize_url(
             AuthenticationFlow::<CoreResponseType>::AuthorizationCode,
             CsrfToken::new_random,
             Nonce::new_random,
         )
-        // This example is requesting access to the "calendar" features and the user's profile.
         .add_scope(Scope::new("email".to_string()))
         .add_scope(Scope::new("profile".to_string()))
-        // .add_scope(Scope::new("https://www.googleapis.com/auth/cloud-platform".to_string()))
-        // .add_scope(Scope::new("https://www.googleapis.com/auth/service.management".to_string()))
         .url();
 
     open::that(authorize_url.as_str()).unwrap();
@@ -187,21 +184,22 @@ fn get_token_from_file() -> Result<Token, String> {
     }
 }
 
+pub fn check_not_expired(token: Token) -> Result<Token, String> {
+    if token.is_expired() {
+        Err("Token expired".to_string())
+    } else {
+        Ok(token)
+    }
+}
+
+pub fn save_token(token: &Token)  {
+    let path = get_config_path().unwrap().join("token");
+    let s = serde_json::to_string(&token).unwrap();
+    std::fs::write(path, s).unwrap();
+}
+
 pub fn get_token() -> Result<Token, String> {
     get_token_from_file()
-    .and_then(|token| {
-        if token.is_expired() {
-            Err("Token expired".to_string())
-        } else {
-            Ok(token)
-        }
-    })
-    .or_else(|_| 
-        login()
-        .inspect(|token| {
-            let path = get_config_path().unwrap().join("token");
-            let s = serde_json::to_string(&token).unwrap();
-            std::fs::write(path, s).unwrap();
-        })
-    )
+    .and_then(check_not_expired)
+    .or_else(|_| login().inspect(save_token))
 }
