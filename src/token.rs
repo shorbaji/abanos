@@ -1,22 +1,50 @@
+use anyhow::anyhow;
+
 use openidconnect::{
-    AdditionalProviderMetadata, AuthenticationFlow, AuthorizationCode, ClientId, ClientSecret,
-    CsrfToken, IssuerUrl, Nonce, OAuth2TokenResponse, ProviderMetadata, RedirectUrl, RevocationUrl,
-    Scope, TokenResponse,
+    AccessTokenHash,
+    AuthenticationFlow,
+    AuthorizationCode,
+    ClientId,
+    ClientSecret,
+    CsrfToken,
+    Nonce,
+    IssuerUrl,
+    PkceCodeChallenge,
+    RedirectUrl,
+    Scope,
 };
 
 use openidconnect::core::{
-    CoreAuthDisplay, CoreClaimName, CoreClaimType, CoreClient, CoreClientAuthMethod, CoreGrantType,
-    CoreJsonWebKey, CoreJsonWebKeyType, CoreJsonWebKeyUse,
-    CoreJweContentEncryptionAlgorithm, CoreJweKeyManagementAlgorithm, CoreJwsSigningAlgorithm,
-    CoreResponseMode, CoreResponseType, CoreSubjectIdentifierType,
+    CoreAuthenticationFlow,
+    CoreClient,
+    CoreProviderMetadata,
+    CoreResponseType,
+    CoreUserInfoClaims,
 };
 
-use openidconnect::reqwest::http_client;
 
+use openidconnect::{OAuth2TokenResponse, TokenResponse};
+
+use openidconnect::reqwest::http_client;
+use serde::{Deserialize, Serialize};
 use std::env;
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
+use url::Url;
+
+
+// the following are used for non-PKCE
+use openidconnect::{
+    AdditionalProviderMetadata, ProviderMetadata, RevocationUrl,
+};
+
+use openidconnect::core::{
+    CoreAuthDisplay, CoreClaimName, CoreClaimType, CoreClientAuthMethod, CoreGrantType,
+    CoreJsonWebKey, CoreJsonWebKeyType, CoreJsonWebKeyUse,
+    CoreJweContentEncryptionAlgorithm, CoreJweKeyManagementAlgorithm, CoreJwsSigningAlgorithm,
+    CoreResponseMode, CoreSubjectIdentifierType,
+};
+
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Token {
@@ -73,10 +101,12 @@ fn login() -> Result<Token, String> {
     let google_client_id = ClientId::new(
         env::var("GOOGLE_CLIENT_ID").expect("Missing the GOOGLE_CLIENT_ID environment variable."),
     );
+
     let google_client_secret = ClientSecret::new(
         env::var("GOOGLE_CLIENT_SECRET")
             .expect("Missing the GOOGLE_CLIENT_SECRET environment variable."),
     );
+
     let issuer_url =
         IssuerUrl::new("https://accounts.google.com".to_string()).expect("Invalid issuer URL");
 
@@ -100,23 +130,30 @@ fn login() -> Result<Token, String> {
     // This example will be running its own server at localhost:8080.
     // See below for the server implementation.
     .set_redirect_uri(
-        RedirectUrl::new("https://api.staging.abanos.io/iam/auth/callback".to_string()).expect("Invalid redirect URL"),
+        RedirectUrl::new("https://api.staging.abanos.io/iam/auth/callback".to_string())
+            .expect("Invalid redirect URL"),
     )
     // Google supports OAuth 2.0 Token Revocation (RFC-7009)
     .set_revocation_uri(
         RevocationUrl::new(revocation_endpoint).expect("Invalid revocation endpoint URL"),
     );
 
-        // Generate the authorization URL to which we'll redirect the user.
-        let (authorize_url, _, _) = client
-        .authorize_url(
-            AuthenticationFlow::<CoreResponseType>::AuthorizationCode,
-            CsrfToken::new_random,
-            Nonce::new_random,
-        )
-        .add_scope(Scope::new("email".to_string()))
-        .add_scope(Scope::new("profile".to_string()))
-        .url();
+    let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
+
+    // Generate the authorization URL to which we'll redirect the user.
+    let (authorize_url, csrf, nonce) = client.authorize_url(
+        CoreAuthenticationFlow::AuthorizationCode,
+        // AuthenticationFlow::<CoreResponseType>::AuthorizationCode,
+        CsrfToken::new_random,
+        Nonce::new_random,
+    )
+    .add_scope(Scope::new("email".to_string()))
+    .add_scope(Scope::new("profile".to_string()))
+    .add_scope(Scope::new("openid".to_string()))
+    .set_pkce_challenge(pkce_challenge)
+    .url();
+
+    println!("authorize url: {:?}", authorize_url);
 
     open::that(authorize_url.as_str()).unwrap();
 
@@ -128,11 +165,30 @@ fn login() -> Result<Token, String> {
 
     let token_response = client
     .exchange_code(code)
+    .set_pkce_verifier(pkce_verifier)
     .request(http_client)
     .unwrap_or_else(|err| {
         handle_error(&err, "Failed to contact token endpoint");
         unreachable!();
     });
+
+    // Extract the ID token claims after verifying its authenticity and nonce.
+    let id_token = token_response
+        .id_token()
+        .ok_or_else(|| "Server did not return an ID token".to_string())?;
+    let claims = id_token.claims(&client.id_token_verifier(), &nonce).map_err(|e| format!("{e:?}"))?;
+
+    // Verify the access token hash to ensure that the access token hasn't been substituted for
+    // another user's.
+    if let Some(expected_access_token_hash) = claims.access_token_hash() {
+        let actual_access_token_hash = AccessTokenHash::from_token(
+            token_response.access_token(),
+            &id_token.signing_alg().map_err(|e| format!("{e:?}"))?
+        ).map_err(|e| format!("{e:?}"))?;
+        if actual_access_token_hash != *expected_access_token_hash {
+            return Err("Invalid access token".to_string());
+        }
+    }
 
     let time_delta = chrono::TimeDelta::new(token_response.expires_in().unwrap().as_secs() as i64, 0);
 
