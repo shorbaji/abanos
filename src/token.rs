@@ -1,63 +1,35 @@
-use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Token {
-    pub jwt: String,
-}
-
-impl Token {
-    fn new(jwt: String) -> Self {
-        Self { jwt }
-    }
-
-}
-
 use rouille::{Response, Server};
+use std::path::PathBuf;
+use std::sync::mpsc;
 
-fn login(host: String) -> Result<Token, String> {
-    let (tx, rx) = std::sync::mpsc::channel();
-    // let (otx, orx) = std::sync::mpsc::channel();
+pub fn get_token(host: String) -> Result<String, String> {
+    // get or create the path to ~/.abanos
+    let path = config_path()?;
 
-    let server = Server::new("localhost:0", move |request| {
-        let jwt = request.get_param("jwt").expect("problem logging in");
-        tx.send(jwt).unwrap();
-        Response::text("logged in")
-    }).unwrap();
-
-    let addr = server.server_addr().port();
-    let url_base = format!("https://{host}/static/login.html");
-
-    let url = format!("{}?signInSuccessUrl=http://localhost:{}", url_base, addr);
-
-    let mut jwt: String = String::new();
-
-    match open::that(url.as_str()) {
-        Ok(_) => {
-            println!("Waiting for browser login to complete ...");
-            let (handle, sender) = server.stoppable();    
-            jwt = rx.recv().unwrap();
-            sender.send(()).unwrap();
-            handle.join().unwrap();                
-        
-        }
-        Err(_) => {
-            let url = format!("{}/static/show_code.html", url_base);
-            println!("No brower detected. Please open the following URL in your browser and login: {}", url);
-            println!("Enter the authorization code:");
-            std::io::stdin().read_line(&mut jwt).unwrap();
-        }
-    }
-
-    Ok(Token::new(jwt))
+    let path = path.join("token");
+    get_token_from_file(&path).or_else(|_| {
+        login(host).inspect(|token| {
+            save_token(&path, token).unwrap_or_else(|e| println!("Failed to save token: {}", e))
+        })
+    })
 }
 
-fn get_config_path() -> Result<PathBuf, String> {
+fn get_token_from_file(path: &PathBuf) -> Result<String, String> {
+    // if ~/abanos/token exists read it and return the token
+    if path.exists() {
+        std::fs::read_to_string(path).map_err(|_| "Failed to read token file".to_string())
+    } else {
+        Err("Token file not found".to_string())
+    }
+}
+
+fn config_path() -> Result<PathBuf, String> {
     if let Some(mut path) = home::home_dir() {
         path.push(".abanos");
         if !path.clone().is_dir() {
             println!("Creating the ~/.abanos directory");
-            std::fs::create_dir_all(path.clone()).map_err(|_| "unable to create ~/.abanos".to_string())?;
+            std::fs::create_dir_all(path.clone())
+                .map_err(|_| "unable to create ~/.abanos".to_string())?;
             Ok(path)
         } else {
             Ok(path)
@@ -67,34 +39,75 @@ fn get_config_path() -> Result<PathBuf, String> {
     }
 }
 
-fn get_token_from_file() -> Result<Token, String> {
-    // get the path to ~/.abanos - create it if it doesn't exist
-    let path = get_config_path();
+pub fn save_token(path: &PathBuf, token: &String) -> Result<(), String> {
+    serde_json::to_string(&token)
+        .map_err(|_| "Failed to serialize token".to_string())
+        .and_then(|s| std::fs::write(path, s).map_err(|_| "Failed to write token file".to_string()))
+}
 
-    // check if a token file exists
-    let token_file = path.clone().unwrap().join("token");
+fn login(host: String) -> Result<String, String> {
+    // we either open a browser with the auth login url OR
+    // we ask the user to open a browser with a url to login and enter the resulting code
+    let url_base = format!("https://{host}/static/login.html");
 
-    // if it doesn't exist, call login
-    // if it exists read the token and check if it is expired
-    // if it is expired, call login
-    // if it is not expired, use it
-    if token_file.exists() {
-        let token = std::fs::read_to_string(token_file).unwrap();
-        let token = serde_json::from_str::<Token>(&token).unwrap();
-        Ok(token)
-    } else {
-        Err("Token file not found".to_string())
+    login_with_browser(&url_base).or_else(|_| login_without_browser(&url_base))
+}
+
+fn login_with_browser(url_base: &String) -> Result<String, String> {
+    let (tx, rx) = mpsc::channel();
+
+    let server = Server::new("localhost:0", move |request| handler(request, tx.clone()));
+
+    let server = server.map_err(|e| format!("rouille error: {:?}", e))?;
+
+    let addr = server.server_addr().port();
+
+    let url = format!("{}?signInSuccessUrl=http://localhost:{}", url_base, addr);
+
+    match open::that(url.as_str()) {
+        Ok(_) => {
+            println!("Waiting for browser login to complete ...");
+            let (handle, sender) = server.stoppable();
+
+            match rx.recv() {
+                Ok(jwt) => {
+                    sender
+                        .send(())
+                        .map_err(|e| format!("mpsc channel error: {:?}", e))?;
+                    handle
+                        .join()
+                        .map_err(|e| format!("server error: {:?}", e))?;
+                    Ok(jwt)
+                }
+                Err(e) => Err(format!("mpsc channel error: {:?}", e)),
+            }
+        }
+        Err(e) => Err(format!("open error: {:?}", e)),
     }
 }
 
-pub fn save_token(token: &Token)  {
-    let path = get_config_path().unwrap().join("token");
-    let s = serde_json::to_string(&token).unwrap();
-    std::fs::write(path, s).unwrap();
+fn handler(request: &rouille::Request, tx: mpsc::Sender<String>) -> rouille::Response {
+    if let Some(jwt) = request.get_param("jwt") {
+        match tx.send(jwt) {
+            Ok(_) => Response::text("Login successful. You can close this tab now."),
+            Err(e) => Response::text(format!("mpsc channel error: {:?}", e)).with_status_code(500),
+        }
+    } else {
+        Response::text("No jwt found").with_status_code(400)
+    }
 }
 
-pub fn get_token(host: String) -> Result<Token, String> {
-    get_token_from_file()
-    // .and_then(check_not_expired)
-    .or_else(|_| login(host).inspect(save_token))
+fn login_without_browser(url_base: &String) -> Result<String, String> {
+    let mut jwt: String = String::new();
+
+    let url = format!("{}/static/show_code.html", url_base);
+    println!(
+        "No brower detected. Please open the following URL in your browser and login: {}",
+        url
+    );
+    println!("Enter the authorization code:");
+    match std::io::stdin().read_line(&mut jwt) {
+        Ok(_) => Ok(jwt),
+        Err(e) => Err(format!("stdin error: {:?}", e)),
+    }
 }

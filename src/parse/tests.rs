@@ -1,4 +1,4 @@
-use crate::parse::{error::ParseError, Expr, Parser, lexer::Token};
+use crate::parse::{error::ParseError, lexer::Token, Expr, Parser};
 
 fn test_meta(s: &str, expected: Vec<Result<Expr, ParseError>>) {
     let reader = Parser::new(s.as_bytes());
@@ -34,7 +34,10 @@ fn test_bytevector() {
 
     let expected = vec![
         Ok(Expr::Bytevector(vec![1, 2, 3])),
-        Err(ParseError::UnexpectedToken(Token::Number("512".to_string()), 1)),
+        Err(ParseError::UnexpectedToken(
+            Token::Number("512".to_string()),
+            1,
+        )),
     ];
 
     test_meta(s, expected);
@@ -166,7 +169,10 @@ fn test_conditional() {
             Box::new(Expr::Number(String::from("1"))),
             Box::new(Expr::Number(String::from("2"))),
         )),
-        Err(ParseError::UnexpectedToken(Token::Number("3".to_string()), 1)),
+        Err(ParseError::UnexpectedToken(
+            Token::Number("3".to_string()),
+            1,
+        )),
     ];
 
     test_meta(s, expected);

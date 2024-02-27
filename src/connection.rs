@@ -59,12 +59,11 @@ impl Connection {
         let protocol = if self.no_tls { "http" } else { "https" };
         let url = format!("{}://{}:{}/api/eval", protocol, self.host, self.port);
 
-        let request = ureq::post(url.as_str())
-            .set(
-                "Authorization",
-                format!("Bearer {}", token.as_str()).as_str()
-            );
-        
+        let request = ureq::post(url.as_str()).set(
+            "Authorization",
+            format!("Bearer {}", token.as_str()).as_str(),
+        );
+
         match request.send_json(expr) {
             Ok(response) => {
                 if response.status() == 200 {

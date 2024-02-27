@@ -67,7 +67,7 @@ impl TryInto<Vec<Value>> for Arg {
 /// Context - represents the context in which an expression is evaluated
 /// - r - the lexical environment
 /// - d - the dynamic environment
-/// - user - the user 
+/// - user - the user
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Context {
     #[serde(skip)]

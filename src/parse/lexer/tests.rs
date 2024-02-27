@@ -1,5 +1,5 @@
-use crate::parse::lexer::Token;
 use super::DLexer;
+use crate::parse::lexer::Token;
 
 fn test_input(input: &str, expecteds: Vec<Token>) {
     let mut lex = DLexer::new(input);
@@ -9,7 +9,7 @@ fn test_input(input: &str, expecteds: Vec<Token>) {
             assert_eq!(token, expected);
         } else {
             panic!("expected token, got error");
-        }   
+        }
     }
 }
 
@@ -103,8 +103,7 @@ fn test_dot() {
 #[test]
 fn test_identifier() {
     [
-        "a", "cc", "c0", "d+", "e-", "f.", "g@", "+", "+j", "--", "+@", "+.k", "+..",
-        ".lmn", "...",
+        "a", "cc", "c0", "d+", "e-", "f.", "g@", "+", "+j", "--", "+@", "+.k", "+..", ".lmn", "...",
     ]
     .iter()
     .for_each(|s| test_input(s, vec![Token::Identifier(s.to_string())]));

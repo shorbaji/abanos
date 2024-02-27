@@ -27,7 +27,7 @@ use clap::Parser;
 /// Mode
 ///
 /// The CLI tool can run in two modes: repl and serialize.
-/// In repl mode, the tool will 
+/// In repl mode, the tool will
 /// 1. read expressions from stdin,
 /// 1. send them to the server for evaluation, and
 /// 1. print the result.
@@ -108,7 +108,6 @@ fn serialize(_args: Args) -> Result<(), String> {
 
 #[doc(hidden)]
 fn main() -> Result<(), String> {
-
     // Parse command line arguments
     let args = Args::parse();
 
@@ -119,7 +118,7 @@ fn main() -> Result<(), String> {
 
     // Run the CLI tool in the mode based on the mode command line argument
     match args.mode {
-        Mode::Repl => repl(args, token.jwt),
+        Mode::Repl => repl(args, token),
         Mode::Serialize => serialize(args),
     }
 }
