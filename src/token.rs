@@ -15,7 +15,7 @@ impl Token {
 
 use rouille::{Response, Server};
 
-fn login() -> Result<Token, String> {
+fn login(host: String) -> Result<Token, String> {
     let (tx, rx) = std::sync::mpsc::channel();
     // let (otx, orx) = std::sync::mpsc::channel();
 
@@ -26,17 +26,29 @@ fn login() -> Result<Token, String> {
     }).unwrap();
 
     let addr = server.server_addr().port();
-    let authorize_url = format!("https://api.staging.abanos.io/static/login.html?signInSuccessUrl=http://localhost:{}", addr);
-    open::that(authorize_url.as_str()).unwrap();
+    let url_base = format!("https://{host}/static/login.html");
 
-    let (handle, sender) = server.stoppable();    
-    let jwt = rx.recv().unwrap();
-    // let jwt = base64::prelude::BASE64_URL_SAFE_NO_PAD.decode(&jwt).unwrap();
-    // let jwt = base64::prelude::BASE64_STANDARD_NO_PAD.encode(jwt);
+    let url = format!("{}?signInSuccessUrl=http://localhost:{}", url_base, addr);
 
-    sender.send(()).unwrap();
-    handle.join().unwrap();
-    println!("jwt: {}", jwt);
+    let mut jwt: String = String::new();
+
+    match open::that(url.as_str()) {
+        Ok(_) => {
+            println!("Waiting for browser login to complete ...");
+            let (handle, sender) = server.stoppable();    
+            jwt = rx.recv().unwrap();
+            sender.send(()).unwrap();
+            handle.join().unwrap();                
+        
+        }
+        Err(_) => {
+            let url = format!("{}/static/show_code.html", url_base);
+            println!("No brower detected. Please open the following URL in your browser and login: {}", url);
+            println!("Enter the authorization code:");
+            std::io::stdin().read_line(&mut jwt).unwrap();
+        }
+    }
+
     Ok(Token::new(jwt))
 }
 
@@ -81,8 +93,8 @@ pub fn save_token(token: &Token)  {
     std::fs::write(path, s).unwrap();
 }
 
-pub fn get_token() -> Result<Token, String> {
+pub fn get_token(host: String) -> Result<Token, String> {
     get_token_from_file()
     // .and_then(check_not_expired)
-    .or_else(|_| login().inspect(save_token))
+    .or_else(|_| login(host).inspect(save_token))
 }
