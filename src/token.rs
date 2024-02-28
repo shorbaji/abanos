@@ -13,16 +13,16 @@ pub fn get_token(host: &String) -> Result<String, String> {
 
     let path = path.join("token");
     get_token_from_file(&path).or_else(|_| {
-        login(host)
-        .inspect(|token| { let _ = std::fs::write(path, token); })
+        login(host).inspect(|token| {
+            let _ = std::fs::write(path, token);
+        })
     })
 }
 
 fn get_token_from_file(path: &PathBuf) -> Result<String, String> {
     // if ~/abanos/token exists read it and return the token
     if path.exists() {
-        std::fs::read_to_string(path)
-            .map_err(|_| "Failed to read token file".to_string())
+        std::fs::read_to_string(path).map_err(|_| "Failed to read token file".to_string())
     } else {
         Err("Token file not found".to_string())
     }
@@ -49,19 +49,15 @@ fn login(host: &String) -> Result<String, String> {
     // we either open a browser with the auth login url OR
     // we ask the user to open a browser with a url to login and enter the resulting code
     // either way we need a base url to start with
-    login_with_browser(host)
-        .or_else(|_|
-            login_without_browser(host))
+    login_with_browser(host).or_else(|_| login_without_browser(host))
 }
 
 fn login_with_browser(host: &String) -> Result<String, String> {
     let (tx, rx) = mpsc::channel();
 
     // we create the server without running it first so we can get the port
-    let server = Server::new("localhost:0", move |request| {
-        handler(request, tx.clone())
-    })
-    .map_err(|e| format!("rouille error: {:?}", e))?;
+    let server = Server::new("localhost:0", move |request| handler(request, tx.clone()))
+        .map_err(|e| format!("rouille error: {:?}", e))?;
     let addr = server.server_addr().port();
 
     // we use the port as part of the redirect url

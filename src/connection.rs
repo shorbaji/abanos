@@ -33,20 +33,20 @@ impl Connection {
         debug!("health check calling {url}");
 
         ureq::get(url.as_str())
-        .set("Authorization", format!("Bearer {}", token).as_str())
-        .call()
-        .map_err(|e| format!("error: {}", e))
-        .and_then(|response| {
-            if response.status() == 200 {
-                debug!("healthcheck received response status 200 OK");
-                Ok(self)
-            } else {
-                Err(format!(
-                    "healthcheck: unexpected status code: {}",
-                    response.status()
-                ))
-            }
-        })
+            .set("Authorization", format!("Bearer {}", token).as_str())
+            .call()
+            .map_err(|e| format!("error: {}", e))
+            .and_then(|response| {
+                if response.status() == 200 {
+                    debug!("healthcheck received response status 200 OK");
+                    Ok(self)
+                } else {
+                    Err(format!(
+                        "healthcheck: unexpected status code: {}",
+                        response.status()
+                    ))
+                }
+            })
     }
 
     /// Send an expression to the server for evaluation
@@ -59,10 +59,8 @@ impl Connection {
         let protocol = if self.no_tls { "http" } else { "https" };
         let url = format!("{}://{}:{}/api/eval", protocol, self.host, self.port);
 
-        let request = ureq::post(url.as_str()).set(
-            "Authorization",
-            format!("Bearer {}", token).as_str(),
-        );
+        let request =
+            ureq::post(url.as_str()).set("Authorization", format!("Bearer {}", token).as_str());
 
         match request.send_json(expr) {
             Ok(response) => {
