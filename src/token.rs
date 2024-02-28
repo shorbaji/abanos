@@ -16,9 +16,8 @@ pub fn get_token() -> Result<String, String> {
 
     let path = path.join("token");
     get_token_from_file(&path).or_else(|_| {
-        login().inspect(|token| {
-            let _ = std::fs::write(path, token);
-        })
+        login()
+        // .inspect(|token| { let _ = std::fs::write(path, token); })
     })
 }
 
@@ -98,7 +97,7 @@ fn handler(request: &rouille::Request, tx: mpsc::Sender<String>) -> rouille::Res
     // once a request comes in - look for the jwt param and send it to the main thread
     if let Some(jwt) = request.get_param("jwt") {
         match tx.send(jwt) {
-            Ok(_) => Response::text("Login successful. You can close this tab."),
+            Ok(_) => Response::html("<script>window.close();</script>"),
             Err(e) => Response::text(format!("mpsc channel error: {:?}", e)).with_status_code(500),
         }
     } else {
