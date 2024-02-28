@@ -27,12 +27,13 @@ impl Connection {
     /// This method will send a GET request to the server's health endpoint and return
     /// the connection if the server responds with a 200 OK status code. Otherwise, it
     /// will return an error.
-    pub fn healthcheck(&self) -> Result<&Self, String> {
+    pub fn healthcheck(&self, token: &str) -> Result<&Self, String> {
         let protocol = if self.no_tls { "http" } else { "https" };
         let url = format!("{}://{}:{}/api/health", protocol, self.host, self.port);
         debug!("health check calling {url}");
 
         ureq::get(url.as_str())
+            .set("Authorization", format!("Bearer {}", token).as_str())
             .call()
             .map_err(|e| format!("error: {}", e))
             .and_then(|response| {
@@ -54,14 +55,12 @@ impl Connection {
     /// expression and return the response from the server.
 
     #[allow(clippy::result_large_err)]
-    pub fn send(&self, expr: Expr, token: String) -> Result<Value, String> {
+    pub fn send(&self, expr: Expr, token: &str) -> Result<Value, String> {
         let protocol = if self.no_tls { "http" } else { "https" };
         let url = format!("{}://{}:{}/api/eval", protocol, self.host, self.port);
 
-        let request = ureq::post(url.as_str()).set(
-            "Authorization",
-            format!("Bearer {}", token.as_str()).as_str(),
-        );
+        let request =
+            ureq::post(url.as_str()).set("Authorization", format!("Bearer {}", token).as_str());
 
         match request.send_json(expr) {
             Ok(response) => {

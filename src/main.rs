@@ -78,12 +78,12 @@ fn repl(args: Args, token: String) -> Result<(), String> {
     debug!("args: {args:?}");
 
     connection::Connection::new(args.host, args.port, args.no_tls) // create a connection
-        .healthcheck() // check its health
+        .healthcheck(&token) // check its health
         .map(|conn| {
             // if it is healthy
             parse::Parser::new(std::io::stdin().lock()) // repl
                 .filter_map(Result::ok)
-                .map(|expr| conn.send(expr, token.clone()))
+                .map(|expr| conn.send(expr, &token))
                 .for_each(|r| {
                     println!(
                         "{}",
@@ -114,7 +114,7 @@ fn main() -> Result<(), String> {
     // Set the log level depending on --debug command line argument
     simple_log::quick!(if args.debug { "debug" } else { "info" });
 
-    let token = token::get_token()?;
+    let token = token::get_token(&args.host)?;
 
     // Run the CLI tool in the mode based on the mode command line argument
     match args.mode {
