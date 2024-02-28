@@ -7,7 +7,7 @@ use std::iter::Peekable;
 use logos::{Lexer, Logos};
 
 /// Token
-/// lexical analyzer based on r7rs small 
+/// lexical analyzer based on r7rs small
 #[derive(Serialize, Deserialize, Logos, Debug, Clone, PartialEq)]
 pub enum Token {
     #[regex(r"(#(([tT][rR][uU][eE])|([fF][aA][lL][sS][eE])|([tT]|[fF])))", to_bool)]
@@ -114,7 +114,7 @@ fn to_string(lex: &mut Lexer<Token>) -> Option<String> {
 
 /// DLexer
 /// Implements delimiting
-/// From r7rs small: "Identifiers that do not begin with a vertical line are 
+/// From r7rs small: "Identifiers that do not begin with a vertical line are
 /// terminated by a delimiter or by the end of the input."
 /// dot, numbers, characters, and booleans"
 pub struct DLexer<'a> {

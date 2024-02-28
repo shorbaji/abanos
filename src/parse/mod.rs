@@ -16,7 +16,7 @@ use std::io::Write;
 use std::iter::Peekable;
 
 /// abanos parser
-/// 
+///
 pub struct Parser<R>
 where
     R: std::io::BufRead,

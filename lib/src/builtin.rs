@@ -4,7 +4,7 @@ use crate::continuation::{Closure, Context, Continuation};
 use crate::value::Value;
 
 /// Builtin
-/// represents a built-in function (standard procedure) 
+/// represents a built-in function (standard procedure)
 /// such as `+`, `call/cc`, `read`, etc
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Builtin {

@@ -19,13 +19,15 @@ extern crate simple_log;
 mod connection;
 #[doc(hidden)]
 mod parse;
+#[doc(hidden)]
+mod token;
 
 use clap::Parser;
 
 /// Mode
 ///
 /// The CLI tool can run in two modes: repl and serialize.
-/// In repl mode, the tool will 
+/// In repl mode, the tool will
 /// 1. read expressions from stdin,
 /// 1. send them to the server for evaluation, and
 /// 1. print the result.
@@ -69,7 +71,7 @@ struct Args {
 /// expressions from stdin, send them to the server for evaluation, and print the result.
 ///
 
-fn repl(args: Args) -> Result<(), String> {
+fn repl(args: Args, token: String) -> Result<(), String> {
     println!("abanos cli v{}", env!("CARGO_PKG_VERSION"));
     println!("copyright (c) 2024 Omar Shorbaji. All rights reserved.");
 
@@ -81,7 +83,7 @@ fn repl(args: Args) -> Result<(), String> {
             // if it is healthy
             parse::Parser::new(std::io::stdin().lock()) // repl
                 .filter_map(Result::ok)
-                .map(|expr| conn.send(expr))
+                .map(|expr| conn.send(expr, token.clone()))
                 .for_each(|r| {
                     println!(
                         "{}",
@@ -106,16 +108,17 @@ fn serialize(_args: Args) -> Result<(), String> {
 
 #[doc(hidden)]
 fn main() -> Result<(), String> {
-
     // Parse command line arguments
     let args = Args::parse();
 
     // Set the log level depending on --debug command line argument
     simple_log::quick!(if args.debug { "debug" } else { "info" });
 
+    let token = token::get_token()?;
+
     // Run the CLI tool in the mode based on the mode command line argument
     match args.mode {
-        Mode::Repl => repl(args),
+        Mode::Repl => repl(args, token),
         Mode::Serialize => serialize(args),
     }
 }
