@@ -1,6 +1,11 @@
-use rouille::{Response, Server};
-use std::path::PathBuf;
-use std::sync::mpsc;
+/// This module gets an ID token for the CLI from the server.
+/// usage: 
+///
+/// get_token("<host>".to_string());
+///
+use rouille::{Response, Server}; // needed to set up a local server to serve a redirect URL and receive the token
+use std::path::PathBuf; // needed to save the token to a file
+use std::sync::mpsc; // needed for the local server to communicate with the main thread
 
 pub fn get_token(host: String) -> Result<String, String> {
     // get or create the path to ~/.abanos
@@ -9,7 +14,7 @@ pub fn get_token(host: String) -> Result<String, String> {
     let path = path.join("token");
     get_token_from_file(&path).or_else(|_| {
         login(host).inspect(|token| {
-            save_token(&path, token).unwrap_or_else(|e| println!("Failed to save token: {}", e))
+            let _ = std::fs::write(path, token);
         })
     })
 }
@@ -24,6 +29,7 @@ fn get_token_from_file(path: &PathBuf) -> Result<String, String> {
 }
 
 fn config_path() -> Result<PathBuf, String> {
+    // get or create the path to ~/.abanos
     if let Some(mut path) = home::home_dir() {
         path.push(".abanos");
         if !path.clone().is_dir() {
@@ -39,43 +45,45 @@ fn config_path() -> Result<PathBuf, String> {
     }
 }
 
-pub fn save_token(path: &PathBuf, token: &String) -> Result<(), String> {
-    serde_json::to_string(&token)
-        .map_err(|_| "Failed to serialize token".to_string())
-        .and_then(|s| std::fs::write(path, s).map_err(|_| "Failed to write token file".to_string()))
-}
-
 fn login(host: String) -> Result<String, String> {
     // we either open a browser with the auth login url OR
     // we ask the user to open a browser with a url to login and enter the resulting code
+    // either way we need a base url to start with
     let url_base = format!("https://{host}/static/login.html");
 
-    login_with_browser(&url_base).or_else(|_| login_without_browser(&url_base))
+    login_with_browser(&url_base)
+        .or_else(|_| login_without_browser(&url_base))
 }
 
 fn login_with_browser(url_base: &String) -> Result<String, String> {
     let (tx, rx) = mpsc::channel();
 
-    let server = Server::new("localhost:0", move |request| handler(request, tx.clone()));
+    // we create the server without running it first so we can get the port
+    let server = Server::new(
+                    "localhost:0",
+                    move |request| handler(request, tx.clone()))
+                    .map_err(|e| format!("rouille error: {:?}", e))?;
+    let addr = server
+                .server_addr()
+                .port();
 
-    let server = server.map_err(|e| format!("rouille error: {:?}", e))?;
+    // we use the port as part of the redirect url
+    let url = format!("{url_base}?signInSuccessUrl=http://localhost:{addr}");
 
-    let addr = server.server_addr().port();
-
-    let url = format!("{}?signInSuccessUrl=http://localhost:{}", url_base, addr);
-
+    // try to open the browser with the url
     match open::that(url.as_str()) {
         Ok(_) => {
-            println!("Waiting for browser login to complete ...");
+            // since we have success with the browser we start the server
+            // and listen for the token to be sent to us by the server
             let (handle, sender) = server.stoppable();
 
             match rx.recv() {
                 Ok(jwt) => {
                     sender
-                        .send(())
+                        .send(()) // as the server to stop
                         .map_err(|e| format!("mpsc channel error: {:?}", e))?;
                     handle
-                        .join()
+                        .join() // wait for the server to stop
                         .map_err(|e| format!("server error: {:?}", e))?;
                     Ok(jwt)
                 }
@@ -87,6 +95,7 @@ fn login_with_browser(url_base: &String) -> Result<String, String> {
 }
 
 fn handler(request: &rouille::Request, tx: mpsc::Sender<String>) -> rouille::Response {
+    // once a request comes in - look for the jwt param and send it to the main thread
     if let Some(jwt) = request.get_param("jwt") {
         match tx.send(jwt) {
             Ok(_) => Response::text("Login successful. You can close this tab now."),
@@ -97,7 +106,11 @@ fn handler(request: &rouille::Request, tx: mpsc::Sender<String>) -> rouille::Res
     }
 }
 
+
 fn login_without_browser(url_base: &String) -> Result<String, String> {
+    // if no browser, provide the user with a URL to open in their browser
+    // redirecting to a page on the server that will show the code
+    // then we ask the user to enter the code
     let mut jwt: String = String::new();
 
     let url = format!("{}/static/show_code.html", url_base);
