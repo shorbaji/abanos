@@ -114,7 +114,7 @@ fn main() -> Result<(), String> {
     // Set the log level depending on --debug command line argument
     simple_log::quick!(if args.debug { "debug" } else { "info" });
 
-    let token = token::get_token(args.host.clone())?;
+    let token = token::get_token()?;
 
     // Run the CLI tool in the mode based on the mode command line argument
     match args.mode {
