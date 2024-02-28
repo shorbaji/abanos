@@ -78,7 +78,7 @@ fn repl(args: Args, token: String) -> Result<(), String> {
     debug!("args: {args:?}");
 
     connection::Connection::new(args.host, args.port, args.no_tls) // create a connection
-        .healthcheck(token.clone()) // check its health
+        .healthcheck() // check its health
         .map(|conn| {
             // if it is healthy
             parse::Parser::new(std::io::stdin().lock()) // repl
