@@ -3,9 +3,7 @@
 ///
 /// get_token("<host>".to_string());
 ///
-use rouille::{Response, Server}; // needed to set up a local server to serve a redirect URL and receive the token
-use std::path::PathBuf; // needed to save the token to a file
-use std::sync::mpsc; // needed for the local server to communicate with the main thread
+use std::{io::{Read, Write}, path::PathBuf};
 
 pub fn get_token(host: &String) -> Result<String, String> {
     // get or create the path to ~/.abanos
@@ -22,7 +20,8 @@ pub fn get_token(host: &String) -> Result<String, String> {
 fn get_token_from_file(path: &PathBuf) -> Result<String, String> {
     // if ~/abanos/token exists read it and return the token
     if path.exists() {
-        std::fs::read_to_string(path).map_err(|_| "Failed to read token file".to_string())
+        std::fs::read_to_string(path)
+            .map_err(|_| "Failed to read token file".to_string())
     } else {
         Err("Token file not found".to_string())
     }
@@ -45,80 +44,64 @@ fn config_path() -> Result<PathBuf, String> {
     }
 }
 
-fn login(host: &String) -> Result<String, String> {
-    // we either open a browser with the auth login url OR
-    // we ask the user to open a browser with a url to login and enter the resulting code
-    // either way we need a base url to start with
-    login_with_browser(host).or_else(|_| login_without_browser(host))
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct DeviceCode {
+    device_code: String,
+    user_code: String,
+    verification_uri: String,
+    expires_in: u32,
+    interval: u32,
 }
 
-fn login_with_browser(host: &String) -> Result<String, String> {
-    let (tx, rx) = mpsc::channel();
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+struct Token {
+    access_token: String,
+    token_type: String,
+    scope: String,
+}
 
-    // we create the server without running it first so we can get the port
-    let server = Server::new("localhost:0", move |request| handler(request, tx.clone()))
-        .map_err(|e| format!("rouille error: {:?}", e))?;
-    let addr = server.server_addr().port();
+fn request_device_code() -> Result<String, String> {
+    let base = "https://oauth2.googleapis.com/device/code";
+    let client_id = "Iv1.54d037600fdd3058";
+    let scope = "read:user";
+    let uri = format!("{base}?client_id={client_id}&scope={scope})");
+    
+    // request a device code
+    let mut response = idcurl::Request::post(uri)
+        .header("Accept", "application/json")
+        .send()
+        .expect("error sending/receive device code request");
 
-    // we use the port as part of the redirect url
-    // let url = format!("{url_base}?signInSuccessUrl=http://localhost:{addr}");
-    let redirect_url = format!("http://localhost:{addr}");
-    let url = get_authorization_url(host, &redirect_url);
+    let device_code = serde_json::from_reader::<_, DeviceCode>(response).expect("error parsing device code response");
 
-    // try to open the browser with the url
-    match open::that(url.as_str()) {
-        Ok(_) => {
-            // since we have success with the browser we start the server
-            // and listen for the token to be sent to us by the server
-            let (handle, sender) = server.stoppable();
+    // print the user code and verification uri to the user
+    println!("Please go to {} and enter the code {}", device_code.verification_uri, device_code.user_code);
 
-            match rx.recv() {
-                Ok(jwt) => {
-                    sender
-                        .send(()) // as the server to stop
-                        .map_err(|e| format!("mpsc channel error: {:?}", e))?;
-                    handle
-                        .join() // wait for the server to stop
-                        .map_err(|e| format!("server error: {:?}", e))?;
-                    Ok(jwt)
-                }
-                Err(e) => Err(format!("mpsc channel error: {:?}", e)),
+    // poll the server for the token
+    let mut wait = 0;
+    
+    while wait < 300 {
+        wait += device_code.interval;
+        std::thread::sleep(std::time::Duration::from_secs(device_code.interval as u64));
+        println!("polling for token");
+        let base = "https://oauth2.googleapis.com/token";
+        let uri= format!("{base}?client_id={client_id}&device_code={}&grant_type=urn:ietf:params:oauth:grant-type:device_code", device_code.device_code); 
+
+        let mut response = idcurl::Request::post(uri)
+            .header("Accept", "application/json")
+            .send()
+            .expect("error sending/receive device code request");
+
+        if response.status().is_success() {
+            match serde_json::from_reader::<_, Token>(response) {
+                Ok(token) => return Ok(token.access_token),
+                Err(e) => continue,
             }
         }
-        Err(e) => Err(format!("open error: {:?}", e)),
     }
+    Err("Failed to get token".to_string())
 }
 
-fn handler(request: &rouille::Request, tx: mpsc::Sender<String>) -> rouille::Response {
-    // once a request comes in - look for the jwt param and send it to the main thread
-    if let Some(jwt) = request.get_param("jwt") {
-        match tx.send(jwt) {
-            Ok(_) => Response::html("<script>window.close();</script>"),
-            Err(e) => Response::text(format!("mpsc channel error: {:?}", e)).with_status_code(500),
-        }
-    } else {
-        Response::text("no jwt found").with_status_code(400)
-    }
-}
-
-fn login_without_browser(host: &String) -> Result<String, String> {
-    // if no browser, provide the user with a URL to open in their browser
-    // redirecting to a page on the server that will show the code
-    // then we ask the user to enter the code
-    let mut jwt: String = String::new();
-
-    let url = get_authorization_url(host, "/static/show_code.html");
-    println!(
-        "No brower detected. Please open the following URL in your browser and login: {}",
-        url
-    );
-    println!("Enter the authorization code:");
-    match std::io::stdin().read_line(&mut jwt) {
-        Ok(_) => Ok(jwt),
-        Err(e) => Err(format!("stdin error: {:?}", e)),
-    }
-}
-
-fn get_authorization_url(host: &String, redirect_url: &str) -> String {
-    format!("https://{host}/static/login.html?signInSuccessUrl={redirect_url}")
+fn login(host: &str) -> Result<String, String> {
+    request_device_code()
 }
