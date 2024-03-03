@@ -16,11 +16,11 @@
 extern crate simple_log;
 
 #[doc(hidden)]
+mod auth;
+#[doc(hidden)]
 mod connection;
 #[doc(hidden)]
 mod parse;
-#[doc(hidden)]
-mod token;
 
 use clap::Parser;
 
@@ -114,11 +114,11 @@ fn main() -> Result<(), String> {
     // Set the log level depending on --debug command line argument
     simple_log::quick!(if args.debug { "debug" } else { "info" });
 
-    let token = token::get_token(&args.host)?;
+    let token = auth::get_token(&args)?;
 
     // Run the CLI tool in the mode based on the mode command line argument
     match args.mode {
-        Mode::Repl => repl(args, token),
+        Mode::Repl => repl(args, token.get()),
         Mode::Serialize => serialize(args),
     }
 }
