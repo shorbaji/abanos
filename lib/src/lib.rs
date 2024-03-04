@@ -1,5 +1,7 @@
 //! This module contains the shared code between the various parts of abanos
 //! It includes continuations, environments, expressions, users, and values
+
+pub mod auth;
 pub mod builtin;
 pub mod continuation;
 pub mod env;
