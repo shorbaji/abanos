@@ -71,19 +71,19 @@ struct Args {
 /// expressions from stdin, send them to the server for evaluation, and print the result.
 ///
 
-fn repl(args: Args, token: String) -> Result<(), String> {
+fn repl(args: Args, credential: auth::Credential) -> Result<(), String> {
     println!("abanos cli v{}", env!("CARGO_PKG_VERSION"));
     println!("copyright (c) 2024 Omar Shorbaji. All rights reserved.");
 
     debug!("args: {args:?}");
 
     connection::Connection::new(args.host, args.port, args.no_tls) // create a connection
-        .healthcheck(&token) // check its health
+        .healthcheck(credential.get_id_token()) // check its health
         .map(|conn| {
             // if it is healthy
             parse::Parser::new(std::io::stdin().lock()) // repl
                 .filter_map(Result::ok)
-                .map(|expr| conn.send(expr, &token))
+                .map(|expr| conn.send(expr, credential.get_id_token()))
                 .for_each(|r| {
                     println!(
                         "{}",
@@ -114,11 +114,13 @@ fn main() -> Result<(), String> {
     // Set the log level depending on --debug command line argument
     simple_log::quick!(if args.debug { "debug" } else { "info" });
 
+    // identity is a first-class concept in abanos
+    // we start by getting a credential which uses args like host and port
     let credential = auth::get_credential(&args)?;
 
     // Run the CLI tool in the mode based on the mode command line argument
     match args.mode {
-        Mode::Repl => repl(args, credential.get_id_token().to_string()),
+        Mode::Repl => repl(args, credential),
         Mode::Serialize => serialize(args),
     }
 }

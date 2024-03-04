@@ -1,14 +1,7 @@
-/// This module gets an ID token for the CLI from the server.
-/// usage:
-///
-/// get_token("<host>".to_string());
-///
-use std::env;
+use std::{env, path};
 use std::path::PathBuf;
 
-use rouille::{Request, Response};
-
-use openidconnect::{ CsrfToken, Nonce, };
+use openidconnect::{ CsrfToken, Nonce};
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 struct DeviceCode {
@@ -27,34 +20,53 @@ pub struct Credential {
     scope: String,
     expires_in: u32,
     id_token: String,
+    #[serde(skip, default="String::new")]
+    _refresh_token: String,
 }
 
 impl Credential {
     pub fn get_id_token(&self) -> &str {
         &self.id_token
     }
+
+    pub fn _get_access_token(&self) -> &str {
+        &self.access_token
+    }
+
+    pub fn _get_refresh_token(&self) -> &str {
+        &self._refresh_token
+    }
 }
+
+impl TryFrom<&path::PathBuf> for Credential {
+    type Error = String;
+
+    fn try_from(path: &path::PathBuf) -> Result<Self, Self::Error> {
+        let s = std::fs::read_to_string(path)
+            .map_err(|_| "Failed to read credential file".to_string())?;
+
+        s.as_str().try_into()
+    }
+}
+
+impl TryFrom<&str> for Credential {
+    type Error = String;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        serde_json::from_str(s)
+            .map_err(|_| "Failed to parse credential string".to_string())
+    }
+}
+
 pub fn get_credential(args: &crate::Args) -> Result<Credential, String> {
     // ~/.abanos/credential - create ~/.abanos if it doesn't exist
     let path = config_path()?.join("credential");
 
-    read_credential_from_file(&path)
-        .or_else(|_|
-            login(args).inspect(|credential| {
+    Credential::try_from(&path)
+        .or_else(|_| get_credential_with_oauth2(args))
+            .inspect(|credential| {
                 let s = serde_json::to_string(&credential).unwrap();
-                let _ = std::fs::write(path, s); }))
-}
-
-fn read_credential_from_file(path: &PathBuf) -> Result<Credential, String> {
-    // if ~/abanos/credential exists read it and return the credential
-    if path.exists() {
-        std::fs::read_to_string(path)
-            .map_err(|_| "Failed to read credential file".to_string())
-            .and_then(|s| serde_json::from_str(&s).map_err(|_| "Failed to parse credential file".to_string()))
-        
-    } else {
-        Err("Token file not found".to_string())
-    }
+                let _ = std::fs::write(path, s); })
 }
 
 fn config_path() -> Result<PathBuf, String> {
@@ -74,71 +86,7 @@ fn config_path() -> Result<PathBuf, String> {
     }
 }
 
-fn request_credential(
-    request: &Request,
-    tx: &std::sync::mpsc::Sender<Credential>,
-    csrf: &str,
-    verifier: &openidconnect::PkceCodeVerifier,
-    token_url: &str,
-) -> Response {
-    // Step 4 of the Authorization Code Flow with PKCE
-    // we receive the code and state from the server
-    // we check that the state matches the csrf token
-    // we then request a credential from the server
-
-    match request.get_param("code") {
-        None => Response::text("no code").with_status_code(400),
-        Some(code) => match request.get_param("state") {
-            None => Response::text("no state").with_status_code(400),
-            Some(state) => if state == csrf {
-                let form = [
-                    ("grant_type", "authorization_code"),
-                    ("code", &code),
-                    ("code_verifier", verifier.secret()),
-                ];
-            
-                match reqwest::blocking::Client::new()
-                    .post(token_url)
-                    .header("content-type", "application/json")
-                    .form(&form)
-                    .send() 
-                {
-                    Ok(response) => {
-                        if response.status().is_success() {
-                            match response.text() {
-                                Ok(text) => {
-                                    match serde_json::from_str::<Credential>(&text) {
-                                        Ok(token) => {
-                                            match tx.send(token) {
-                                                Ok(_) => Response::text("ok").with_status_code(200),
-                                                Err(_) => Response::text("error sending credential").with_status_code(500),
-                                            }
-                                        }
-                                        Err(e) => Response::text(format!("error parsing credential from response: {:?}", e)).with_status_code(500),
-                                    }
-                                }
-                                Err(_) => Response::text("error parsing response").with_status_code(500),
-                            }
-                        } else {
-                            Response::text("error").with_status_code(response.status().as_u16())
-                        }
-                    }
-                    Err(_) => Response::text("error"),
-                }            
-            } else {
-                Response::text("state does not match csrf").with_status_code(400)
-            }
-        }
-    }
-    // we need to compare the csrf token with the state
-    // we then need to reuest a credential from the server
-
-    // call iam/token
-
-}
-
-fn login(args: &crate::Args) -> Result<Credential, String> {
-
+fn get_credential_with_oauth2(args: &crate::Args) -> Result<Credential, String> {
     // Step 1 of the Authorization Code Flow with PKCE
     // is to request an authorization code from the server
 
@@ -184,16 +132,17 @@ fn login(args: &crate::Args) -> Result<Credential, String> {
                 (GET) (/callback) => {
                     request_credential(
                         request,
-                        &tx,
+                        tx.clone(),
                         &csrf,
                         &code_verifier,
                         &token_url,
                     )
                 },
-                _ => Response::text("Not found")
-            )
+                _ => rouille::Response::text("Not found")
+            )        
         }
     ).map_err(|_| "Failed to start server".to_string())?;
+
 
     let redirect_uri = format!("http://127.0.0.1:{}/callback", server.server_addr().port());
     
@@ -235,3 +184,71 @@ fn login(args: &crate::Args) -> Result<Credential, String> {
 
     Ok(credential)
 }
+
+fn request_credential(
+    request: &rouille::Request,
+    tx: std::sync::mpsc::Sender<Credential>,
+    csrf: &str,
+    verifier: &openidconnect::PkceCodeVerifier,
+    token_url: &str,
+) -> rouille::Response {
+    // Step 2 of the Authorization Code Flow with PKCE
+    // we receive the code and state from the server
+    // we check that the state matches the csrf token
+    // we then request a credential from the server
+    // Return codes:
+    // 400 Bad Request is no code parameter
+    // 400 Bad Request is no state parameter
+    // 400 Bad Request is state does not match csrf
+    // 500 Internal Server Error is error sending request back to server
+    // 500 Internal Server Error is error reading response from token server
+    // 400 Bad Request is error parsing credential
+    // 200 Ok if credential sent
+
+    request.get_param("code")
+    .ok_or((400, "no code".to_string())) 
+    .and_then(|code| {
+        request.get_param("state")
+        .ok_or((400, "no state".to_string())) 
+        .and_then(|state| {
+            (state == csrf).then_some(()) 
+            .ok_or((400, "state does not match csrf".to_string())) 
+            .and_then(|_| {
+                let form = [
+                    ("grant_type", "authorization_code"),
+                    ("code", &code),
+                    ("code_verifier", verifier.secret()),
+                ];
+                reqwest::blocking::Client::new()
+                .post(token_url)
+                .header("content-type", "application/json")
+                .form(&form)
+                .send() 
+                .map_err(|e| (500, format!("error sending request {e:?}")))
+                .and_then(|response| {
+                    let status = response.status();
+                    response.text()
+                    .map_err(|e| (500, format!("error reading response {e:?}"))) 
+                    .and_then(|text| {
+                        status
+                        .is_success()
+                        .then_some(text.clone())
+                        .ok_or((status.as_u16(), text))
+                        .and_then(|text| {
+                            serde_json::from_str::<Credential>(&text)
+                            .map_err(|e| (400, format!("error parsing credential {e:?}")))
+                            .and_then(|credential| {
+                                tx.send(credential)
+                                .map(|_| (200, "ok".to_string()))
+                                .map_err(|e| (500, format!("error sending credential {e:?}")))
+                            })    
+                        })
+                    })
+                })
+            })
+        })
+    })
+    .map(|(code, text)| rouille::Response::text(text).with_status_code(code))
+    .unwrap_or_else(|(code, text)| rouille::Response::text(text).with_status_code(code))
+}
+
