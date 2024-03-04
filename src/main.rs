@@ -114,11 +114,11 @@ fn main() -> Result<(), String> {
     // Set the log level depending on --debug command line argument
     simple_log::quick!(if args.debug { "debug" } else { "info" });
 
-    let token = auth::get_token(&args)?;
+    let credential = auth::get_credential(&args)?;
 
     // Run the CLI tool in the mode based on the mode command line argument
     match args.mode {
-        Mode::Repl => repl(args, token.get()),
+        Mode::Repl => repl(args, credential.get_id_token().to_string()),
         Mode::Serialize => serialize(args),
     }
 }

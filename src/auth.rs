@@ -9,15 +9,6 @@ use std::path::PathBuf;
 use openidconnect::{ CsrfToken, Nonce, };
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
-pub struct Token {
-    access_token: String,
-    token_type: String,
-    scope: String,
-    expires_in: u32,
-    id_token: String,
-}
-
-#[derive(Debug, serde::Deserialize, serde::Serialize)]
 struct DeviceCode {
     device_code: String,
     user_code: String,
@@ -27,29 +18,37 @@ struct DeviceCode {
     interval: u32,
 }
 
-impl Token {
-    pub fn get(&self) -> String {
-        self.access_token.clone()
-    }
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub struct Credential {
+    access_token: String,
+    token_type: String,
+    scope: String,
+    expires_in: u32,
+    id_token: String,
 }
 
-pub fn get_token(args: &crate::Args) -> Result<Token, String> {
-    // ~/.abanos/token - create ~/.abanos if it doesn't exist
-    let path = config_path()?.join("token");
+impl Credential {
+    pub fn get_id_token(&self) -> &str {
+        &self.id_token
+    }
+}
+pub fn get_credential(args: &crate::Args) -> Result<Credential, String> {
+    // ~/.abanos/credential - create ~/.abanos if it doesn't exist
+    let path = config_path()?.join("credential");
 
-    read_token_from_file(&path)
+    read_credential_from_file(&path)
         .or_else(|_|
-            login(args).inspect(|token| {
-                let s = serde_json::to_string(&token).unwrap();
+            login(args).inspect(|credential| {
+                let s = serde_json::to_string(&credential).unwrap();
                 let _ = std::fs::write(path, s); }))
 }
 
-fn read_token_from_file(path: &PathBuf) -> Result<Token, String> {
-    // if ~/abanos/token exists read it and return the token
+fn read_credential_from_file(path: &PathBuf) -> Result<Credential, String> {
+    // if ~/abanos/credential exists read it and return the credential
     if path.exists() {
         std::fs::read_to_string(path)
-            .map_err(|_| "Failed to read token file".to_string())
-            .and_then(|s| serde_json::from_str(&s).map_err(|_| "Failed to parse token file".to_string()))
+            .map_err(|_| "Failed to read credential file".to_string())
+            .and_then(|s| serde_json::from_str(&s).map_err(|_| "Failed to parse credential file".to_string()))
         
     } else {
         Err("Token file not found".to_string())
@@ -73,9 +72,9 @@ fn config_path() -> Result<PathBuf, String> {
     }
 }
 
-fn request_token(
+fn request_credential(
     request: &rouille::Request,
-    tx: &std::sync::mpsc::Sender<Token>,
+    tx: &std::sync::mpsc::Sender<Credential>,
     csrf: &str,
     verifier: &openidconnect::PkceCodeVerifier,
     token_url: &str,
@@ -83,13 +82,13 @@ fn request_token(
     // Step 4 of the Authorization Code Flow with PKCE
     // we receive the code and state from the server
     // we check that the state matches the csrf token
-    // we then request a token from the server
+    // we then request a credential from the server
 
     let code = request.get_param("code").unwrap();
     let state = request.get_param("state").unwrap();
 
     // we need to compare the csrf token with the state
-    // we then need to reuest a token from the server
+    // we then need to reuest a credential from the server
 
     if state == csrf {
         println!("state matches csrf");
@@ -97,7 +96,6 @@ fn request_token(
         println!("state does not match csrf");
     }
 
-    println!("token_url: {:?}", token_url);
     // call iam/token
     let body = serde_json::json!({
         "grant_type": "authorization_code",
@@ -118,7 +116,7 @@ fn request_token(
         Ok(response) => {
             if response.status().is_success() {
                 let text = response.text().unwrap();
-                let token: Token = serde_json::from_str(&text).unwrap();
+                let token: Credential = serde_json::from_str(&text).unwrap();
                 tx.send(token).unwrap();
                 rouille::Response::text("ok")
             } else {
@@ -130,7 +128,7 @@ fn request_token(
 
 }
 
-fn login(args: &crate::Args) -> Result<Token, String> {
+fn login(args: &crate::Args) -> Result<Credential, String> {
 
     // Step 1 of the Authorization Code Flow with PKCE
     // is to request an authorization code from the server
@@ -176,7 +174,7 @@ fn login(args: &crate::Args) -> Result<Token, String> {
         move |request| {
             rouille::router!(request,
                 (GET) (/callback) => {
-                    request_token(
+                    request_credential(
                         request,
                         &tx,
                         &csrf,
@@ -212,20 +210,20 @@ fn login(args: &crate::Args) -> Result<Token, String> {
     .inspect_err(|_| println!("Browse to {}", &auth_url))
     .unwrap_or(());
 
-    // we wait for the server to send us the token
-    let token = rx
+    // we wait for the server to send us the credential
+    let credential = rx
         .recv()
-        .map_err(|_| "Failed to receive token".to_string())
-        .and_then(|token| {
+        .map_err(|_| "Failed to receive credential".to_string())
+        .and_then(|credential| {
             sender.send(())  // we send a stop message to the server
-            .map(|_| token)
+            .map(|_| credential)
             .map_err(|e| 
                 format!("Failed to send stop message: {:?}", e))
         })?;
 
 
-    // we wait for the server to stop and return the token
+    // we wait for the server to stop and return the credential
     handle.join().unwrap();
 
-    Ok(token)
+    Ok(credential)
 }
