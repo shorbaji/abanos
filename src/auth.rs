@@ -6,6 +6,8 @@
 use std::env;
 use std::path::PathBuf;
 
+use rouille::{Request, Response};
+
 use openidconnect::{ CsrfToken, Nonce, };
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
@@ -73,58 +75,65 @@ fn config_path() -> Result<PathBuf, String> {
 }
 
 fn request_credential(
-    request: &rouille::Request,
+    request: &Request,
     tx: &std::sync::mpsc::Sender<Credential>,
     csrf: &str,
     verifier: &openidconnect::PkceCodeVerifier,
     token_url: &str,
-) -> rouille::Response {
+) -> Response {
     // Step 4 of the Authorization Code Flow with PKCE
     // we receive the code and state from the server
     // we check that the state matches the csrf token
     // we then request a credential from the server
 
-    let code = request.get_param("code").unwrap();
-    let state = request.get_param("state").unwrap();
-
+    match request.get_param("code") {
+        None => Response::text("no code").with_status_code(400),
+        Some(code) => match request.get_param("state") {
+            None => Response::text("no state").with_status_code(400),
+            Some(state) => if state == csrf {
+                let form = [
+                    ("grant_type", "authorization_code"),
+                    ("code", &code),
+                    ("code_verifier", verifier.secret()),
+                ];
+            
+                match reqwest::blocking::Client::new()
+                    .post(token_url)
+                    .header("content-type", "application/json")
+                    .form(&form)
+                    .send() 
+                {
+                    Ok(response) => {
+                        if response.status().is_success() {
+                            match response.text() {
+                                Ok(text) => {
+                                    match serde_json::from_str::<Credential>(&text) {
+                                        Ok(token) => {
+                                            match tx.send(token) {
+                                                Ok(_) => Response::text("ok").with_status_code(200),
+                                                Err(_) => Response::text("error sending credential").with_status_code(500),
+                                            }
+                                        }
+                                        Err(e) => Response::text(format!("error parsing credential from response: {:?}", e)).with_status_code(500),
+                                    }
+                                }
+                                Err(_) => Response::text("error parsing response").with_status_code(500),
+                            }
+                        } else {
+                            Response::text("error").with_status_code(response.status().as_u16())
+                        }
+                    }
+                    Err(_) => Response::text("error"),
+                }            
+            } else {
+                Response::text("state does not match csrf").with_status_code(400)
+            }
+        }
+    }
     // we need to compare the csrf token with the state
     // we then need to reuest a credential from the server
 
-    if state == csrf {
-        println!("state matches csrf");
-    } else {
-        println!("state does not match csrf");
-    }
-
     // call iam/token
-    let body = serde_json::json!({
-        "grant_type": "authorization_code",
-        "code": code,
-        "code_verifier": verifier.secret(),
-    });
-
-    let body = serde_json::to_string(&body).unwrap();
-
-    let request = reqwest::blocking::Client::new()
-        .post(token_url)
-        .header("content-type", "application/json")
-        .body(body);
-
-    let response = request.send();
-
-    match response {
-        Ok(response) => {
-            if response.status().is_success() {
-                let text = response.text().unwrap();
-                let token: Credential = serde_json::from_str(&text).unwrap();
-                tx.send(token).unwrap();
-                rouille::Response::text("ok")
-            } else {
-                rouille::Response::text("error")
-            }
-        }
-        Err(_) => rouille::Response::text("error"),
-    }
 
 }
 
@@ -161,16 +170,15 @@ fn login(args: &crate::Args) -> Result<Credential, String> {
     let _nonce = Nonce::new_random();
 
     // next we create a server to listen for the callback on a random port
-    // and build the auth url including using the redirect uri http://localhost:{port}/callback
+    // and build the auth url including using the redirect uri http://127.0.0.1:{port}/callback
     let (tx, rx) = std::sync::mpsc::channel();
     let csrf = state.clone();
 
     let token_path = "/iam/token";
     let token_url = format!("{}://{}:{}{}", &scheme, &host, &port, &token_path);
-    println!("token_url passed to local server: {:?}", token_url);
 
     let server = rouille::Server::new(
-        "localhost:0",
+        "0.0.0.0:0",
         move |request| {
             rouille::router!(request,
                 (GET) (/callback) => {
@@ -182,12 +190,12 @@ fn login(args: &crate::Args) -> Result<Credential, String> {
                         &token_url,
                     )
                 },
-                _ => rouille::Response::text("Not found")
+                _ => Response::text("Not found")
             )
         }
     ).map_err(|_| "Failed to start server".to_string())?;
 
-    let redirect_uri = format!("http://localhost:{}/callback", server.server_addr().port());
+    let redirect_uri = format!("http://127.0.0.1:{}/callback", server.server_addr().port());
     
     let query = [
         format!("client_id={}", client_id),
