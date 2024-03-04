@@ -71,7 +71,7 @@ struct Args {
 /// expressions from stdin, send them to the server for evaluation, and print the result.
 ///
 
-fn repl(args: Args, credential: auth::Credential) -> Result<(), String> {
+fn repl(args: Args, credential: lib::auth::Credential) -> Result<(), String> {
     println!("abanos cli v{}", env!("CARGO_PKG_VERSION"));
     println!("copyright (c) 2024 Omar Shorbaji. All rights reserved.");
 
